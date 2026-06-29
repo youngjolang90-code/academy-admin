@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>플래닛 아카데미 · 수업관리</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <style>
   :root{
     --ink:#1f2421; --ink-soft:#5b635d; --line:#e3e6e1; --line-soft:#eef0ec;
@@ -252,7 +254,7 @@ function renderTimetable(){
   let rows='';
   for(let h=9;h<=22;h++){
     rows+=`<tr><td class="tcol muted">${String(h).padStart(2,'0')}:00</td>`;
-    for(let wd=1;wd<=6;wd++){
+    for(let wd=1;wd<=7;wd++){
       const cells=flat.filter(f=>f.weekday===wd&&(+f.start_time.split(':')[0])===h);
       rows+='<td>'+cells.map(f=>{
         const cls=f.room&&f.grade?'both':f.room?'room':f.grade?'warn':'ok';
@@ -269,7 +271,8 @@ function renderTimetable(){
   const chips=`<button class="ttchip ${ttFilter==null?'on':''}" onclick="ttFilter=null;renderTimetable()">전체</button>`+
     activeInsts.map(i=>`<button class="ttchip ${ttFilter===i.id?'on':''}" onclick="ttFilter=${i.id};renderTimetable()">${i.name}</button>`).join('');
   const who = ttFilter==null ? '전체 강사' : ((DB.instructors.find(i=>i.id===ttFilter)||{}).name||'')+' 강사';
-  main.innerHTML=head('주간 시간표','강좌 칸을 누르면 충돌 상세를 볼 수 있어요. · 현재 보기: '+who)+connBanner()+`
+  main.innerHTML=head('주간 시간표','강좌 칸을 누르면 충돌 상세를 볼 수 있어요. · 현재 보기: '+who,
+    `<button class="btn sm" id="ttImgBtn" onclick="exportTimetableImg(+document.getElementById('ttScale').value)">이미지 저장</button> <select id="ttScale" class="btn sm" style="padding:5px 8px;"><option value="2">2배(선명)</option><option value="1">1배(기본)</option><option value="3">3배(고화질)</option></select>`)+connBanner()+`
     <div class="ttfilter">${chips}</div>
     <div class="legend">
       <span><i class="sw" style="background:#fff"></i>정상</span>
@@ -278,7 +281,7 @@ function renderTimetable(){
       <span><i class="sw" style="background:var(--both-bg)"></i>장소+대상 충돌</span>
     </div>
     <div class="card tt-wrap"><table class="tt"><thead><tr><th class="tcol">시간</th>
-    ${[1,2,3,4,5,6].map(w=>`<th>${WD[w]}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
+    ${[1,2,3,4,5,6,7].map(w=>`<th>${WD[w]}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 function explain(cid){
   const flat=conflicts().filter(f=>f.course.id===cid);
@@ -313,7 +316,7 @@ function renderCourses(){
       </div></td></tr>`;
   }).join('');
   main.innerHTML=head('강좌 관리',`총 ${DB.courses.length}개 강좌`,
-    `<button class="btn primary" onclick="courseForm()">+ 강좌 추가</button>`)+connBanner()+`
+    `<button class="btn sm" onclick="exportExcel('courses')" style="margin-right:6px;">엑셀 저장</button><button class="btn primary" onclick="courseForm()">+ 강좌 추가</button>`)+connBanner()+`
     <div class="card"><table><thead><tr>
       <th>과목</th><th>강좌명</th><th>강사</th><th>대상</th><th>요일·시간</th><th>장소</th><th>수강료</th><th></th>
     </tr></thead><tbody>${rows||'<tr><td colspan="8" class="empty">강좌가 없습니다.</td></tr>'}</tbody></table></div>`;
@@ -375,6 +378,7 @@ function courseForm(id){
       <div class="field"><label>담당 강사</label>${combo('f_inst','instructors',c.instructor_id,'강사')}</div>
       <div class="field"><label>수강료(원)</label><input id="f_tuition" type="number" value="${c.tuition||''}" placeholder="예: 80000"></div>
     </div>
+    <div class="field"><label>정원(명) · 비우면 제한 없음</label><input id="f_capacity" type="number" value="${c.capacity||''}" placeholder="예: 10"></div>
     <div class="field"><label>요일 · 시간 · 장소</label>
       <div id="sessBox">${sessions.map(sessRow).join('')}</div>
       <button type="button" class="btn sm" id="addSess" style="margin-top:4px;">+ 회차 추가 (주 2회·3회…)</button>
@@ -406,6 +410,7 @@ function courseForm(id){
       const obj={
         title:val('f_title'), subject_id, target_id, instructor_id,
         tuition:val('f_tuition')?+val('f_tuition'):null,
+        capacity:val('f_capacity')?+val('f_capacity'):null,
         sessions_per_week:sessOut.length,
         sessions:sessOut
       };
@@ -450,7 +455,7 @@ function renderStudents(){
   const enrolled=c=>DB.enrollments.filter(e=>e.course_id===c.id&&e.status==='ENROLLED').length;
   const counts=DB.courses.map(c=>`<tr><td><b>${c.title}</b></td><td>${name('subjects',c.subject_id)}</td><td>${enrolled(c)}명</td></tr>`).join('');
   main.innerHTML=head('학생 · 수강신청',`총 ${DB.students.length}명`,
-    `<button class="btn primary" onclick="studentForm()">+ 학생 추가</button>`)+connBanner()+`
+    `<button class="btn sm" onclick="exportExcel('students')" style="margin-right:6px;">학생 엑셀</button><button class="btn sm" onclick="exportExcel('enrollments')" style="margin-right:6px;">신청 엑셀</button><button class="btn primary" onclick="studentForm()">+ 학생 추가</button>`)+connBanner()+`
     <div class="card" style="margin-bottom:22px;"><table><thead><tr>
       <th>이름</th><th>학년</th><th>학부모 연락처</th><th>수강 강좌</th><th></th>
     </tr></thead><tbody>${rows||'<tr><td colspan="5" class="empty">학생이 없습니다.</td></tr>'}</tbody></table></div>
@@ -626,6 +631,61 @@ async function backupToSheet(){
 }
 const name2=(arr,id)=>(DB[arr].find(x=>x.id===id)||{}).name||'-';
 document.getElementById('backupBtn').onclick=backupToSheet;
+
+// ════════ 엑셀 내보내기 (화면별) ════════
+function exportExcel(kind){
+  if(typeof XLSX==='undefined'){alert('엑셀 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return;}
+  let rows=[], fname='';
+  if(kind==='courses'){
+    fname='강좌목록';
+    rows=DB.courses.map(c=>({
+      과목:name('subjects',c.subject_id), 강좌명:c.title, 강사:name('instructors',c.instructor_id),
+      대상:name('target_groups',c.target_id),
+      '요일·시간':(c.sessions||[]).map(s=>`${WD[s.weekday]} ${hhmm(s.start_time)}~${hhmm(s.end_time)}`).join(' / '),
+      장소:(c.sessions||[])[0]?name('rooms',c.sessions[0].room_id):'',
+      정원:c.capacity??'', 수강료:c.tuition||''
+    }));
+  } else if(kind==='students'){
+    fname='학생목록';
+    rows=DB.students.map(s=>({
+      이름:s.name, 학년:s.grade??'', 학부모연락처:s.parent_phone||'',
+      수강강좌:DB.enrollments.filter(e=>e.student_id===s.id).map(e=>(DB.courses.find(c=>c.id===e.course_id)||{}).title).filter(Boolean).join(', ')
+    }));
+  } else if(kind==='enrollments'){
+    fname='수강신청내역';
+    rows=DB.enrollments.map(e=>({
+      학생:(DB.students.find(s=>s.id===e.student_id)||{}).name||'',
+      강좌:(DB.courses.find(c=>c.id===e.course_id)||{}).title||'',
+      상태:e.status==='WAITLIST'?'대기':e.status==='ENROLLED'?'등록':e.status,
+      결제:e.payment_status==='PAID'?'완납':e.payment_status==='REFUNDED'?'환불':'미납'
+    }));
+  }
+  if(!rows.length){alert('내보낼 데이터가 없습니다.');return;}
+  const ws=XLSX.utils.json_to_sheet(rows);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,fname);
+  const today=new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb,`플래닛아카데미_${fname}_${today}.xlsx`);
+}
+
+// ════════ 시간표 PNG 저장 ════════
+async function exportTimetableImg(scale){
+  if(typeof html2canvas==='undefined'){alert('이미지 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return;}
+  const el=document.querySelector('.tt-wrap');
+  if(!el){alert('시간표를 찾을 수 없습니다.');return;}
+  const btn=document.getElementById('ttImgBtn'); const orig=btn?btn.textContent:'';
+  if(btn)btn.textContent='저장 중…';
+  try{
+    const canvas=await html2canvas(el,{scale:scale||2,backgroundColor:'#ffffff',scrollX:0,scrollY:0});
+    const who = ttFilter==null ? '전체' : ((DB.instructors.find(i=>i.id===ttFilter)||{}).name||'');
+    const today=new Date().toISOString().slice(0,10);
+    const a=document.createElement('a');
+    a.download=`플래닛아카데미_시간표_${who}_${today}.png`;
+    a.href=canvas.toDataURL('image/png');
+    a.click();
+  }catch(e){alert('이미지 저장 오류: '+e.message);}
+  if(btn)btn.textContent=orig;
+}
 
 // ════════ 시작 ════════
 (async function init(){
