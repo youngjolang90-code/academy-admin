@@ -144,7 +144,9 @@
     <button class="navbtn" data-view="courses"><span class="ic">▤</span><span>강좌 관리</span></button>
     <button class="navbtn" data-view="students"><span class="ic">☺</span><span>학생·수강신청</span></button>
     <button class="navbtn" data-view="master"><span class="ic">⚙</span><span>기초자료</span></button>
+    <button class="navbtn" data-view="accounts" id="accountsBtn"><span class="ic">🔑</span><span>계정관리</span></button>
     <button class="navbtn" id="backupBtn" style="margin-top:8px;"><span class="ic">⤓</span><span>시트 백업</span></button>
+    <button class="navbtn" id="logoutBtn" onclick="adminLogout()"><span class="ic">↩</span><span>로그아웃</span></button>
     <div class="conn"><span class="dot" id="connDot"></span><span id="connTxt">샘플 데이터</span></div>
   </aside>
   <main class="main" id="main"></main>
@@ -238,7 +240,7 @@ function setView(v){view=v;
   render();}
 document.querySelectorAll('.navbtn').forEach(b=>b.onclick=()=>setView(b.dataset.view));
 
-function render(){({timetable:renderTimetable,courses:renderCourses,students:renderStudents,master:renderMaster}[view])();}
+function render(){({timetable:renderTimetable,courses:renderCourses,students:renderStudents,master:renderMaster,accounts:renderAccounts}[view])();}
 
 function head(title,sub,btn){
   return `<div class="head"><div><h1>${title}</h1><div class="sub">${sub}</div></div>${btn||''}</div>`;
@@ -379,6 +381,8 @@ function courseForm(id){
       <div class="field"><label>수강료(원)</label><input id="f_tuition" type="number" value="${c.tuition||''}" placeholder="예: 80000"></div>
     </div>
     <div class="field"><label>정원(명) · 비우면 제한 없음</label><input id="f_capacity" type="number" value="${c.capacity||''}" placeholder="예: 10"></div>
+    <div class="field"><label>커리큘럼 이미지 주소(URL) · 선택</label><input id="f_curri_url" value="${(c.curriculum_url||'').replace(/"/g,'&quot;')}" placeholder="https://... .png/.jpg"></div>
+    <div class="field"><label>커리큘럼 설명 · 선택</label><textarea id="f_curri_text" rows="3" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13.5px;font-family:inherit;" placeholder="수업 내용·주차별 계획 등">${c.curriculum_text||''}</textarea></div>
     <div class="field"><label>요일 · 시간 · 장소</label>
       <div id="sessBox">${sessions.map(sessRow).join('')}</div>
       <button type="button" class="btn sm" id="addSess" style="margin-top:4px;">+ 회차 추가 (주 2회·3회…)</button>
@@ -411,6 +415,8 @@ function courseForm(id){
         title:val('f_title'), subject_id, target_id, instructor_id,
         tuition:val('f_tuition')?+val('f_tuition'):null,
         capacity:val('f_capacity')?+val('f_capacity'):null,
+        curriculum_url:val('f_curri_url')||null,
+        curriculum_text:(document.getElementById('f_curri_text')||{}).value||null,
         sessions_per_week:sessOut.length,
         sessions:sessOut
       };
@@ -475,6 +481,90 @@ function studentForm(id){
 
 // ── 기초자료 ──
 let masterTab='subjects';
+// ════════ 계정관리 (관리자 전용) ════════
+async function renderAccounts(){
+  if(!isAdmin()){main.innerHTML=head('접근 불가','관리자만 사용할 수 있는 메뉴입니다.');return;}
+  // 강사 어드민 계정 목록
+  let teacherAccts=[];
+  if(LIVE){
+    const r=await sb.from('admin_users').select('*, admin_roles(code,name)');
+    if(r.data)teacherAccts=r.data;
+  }
+  const acctRows=teacherAccts.map(a=>`<tr>
+    <td><b>${a.name||'-'}</b></td><td class="muted">${a.login_id||'-'}</td>
+    <td>${a.admin_roles?a.admin_roles.name:'-'}</td>
+    <td>${a.instructor_id?name('instructors',a.instructor_id):'-'}</td>
+    <td><div class="row-actions">
+      <button class="btn sm" onclick="resetAdminPw(${a.id},'${(a.name||'').replace(/'/g,'')}')">비번 초기화</button>
+    </div></td></tr>`).join('');
+
+  main.innerHTML=head('계정관리','학생·강사 계정의 비밀번호를 초기화하고, 강사 계정을 만들 수 있어요.')+`
+    <div class="card" style="margin-bottom:22px;padding:16px;">
+      <div style="font-weight:600;margin-bottom:10px;">🔑 학생 비밀번호 초기화</div>
+      <div class="muted" style="font-size:12.5px;margin-bottom:10px;">학생이 비밀번호를 잊은 경우, 이름으로 찾아 임시 비밀번호로 초기화합니다.</div>
+      <div style="display:flex;gap:8px;">
+        <input id="resetName" placeholder="학생 이름" style="flex:1;padding:9px 11px;border:1px solid var(--line);border-radius:8px;">
+        <button class="btn primary" onclick="resetStudentPw()">초기화</button>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:22px;padding:16px;">
+      <div style="font-weight:600;margin-bottom:10px;">➕ 강사 계정 만들기</div>
+      <div class="grid2" style="margin-bottom:8px;">
+        <input id="ta_id" placeholder="강사 로그인 아이디" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;">
+        <input id="ta_pw" placeholder="초기 비밀번호" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;">
+      </div>
+      <div class="field" style="margin-bottom:8px;"><label>연결할 강사</label>
+        <select id="ta_inst" style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;">
+          <option value="">강사 선택</option>
+          ${DB.instructors.map(i=>`<option value="${i.id}">${i.name}</option>`).join('')}
+        </select>
+      </div>
+      <button class="btn primary" onclick="createTeacherAcct()">강사 계정 생성</button>
+    </div>
+    <div style="font-weight:600;margin-bottom:8px;">현재 어드민 계정</div>
+    <div class="card"><table><thead><tr><th>이름</th><th>아이디</th><th>권한</th><th>담당강사</th><th></th></tr></thead>
+    <tbody>${acctRows||'<tr><td colspan="5" class="empty">계정이 없습니다.</td></tr>'}</tbody></table></div>`;
+}
+// 학생 비번 초기화 → 임시비번 발급
+async function resetStudentPw(){
+  const nm2=document.getElementById('resetName').value.trim();
+  if(!nm2){alert('학생 이름을 입력해 주세요.');return;}
+  if(!LIVE){alert('샘플 모드에서는 동작하지 않습니다.');return;}
+  const r=await sb.from('students').select('id,name,login_id').eq('name',nm2);
+  if(!r.data||!r.data.length){alert('해당 이름의 학생을 찾을 수 없습니다.');return;}
+  if(r.data.length>1 && !confirm(`'${nm2}' 학생이 ${r.data.length}명 있습니다. 모두 초기화할까요?`))return;
+  const temp='0000';
+  const ph=await hashPw(temp);
+  for(const s of r.data){ await sb.from('students').update({password_hash:ph}).eq('id',s.id); }
+  alert(`초기화 완료.\n임시 비밀번호: ${temp}\n학생에게 알려주고 로그인 후 변경하도록 안내해 주세요.`);
+}
+async function resetAdminPw(id,nm2){
+  if(!LIVE){alert('샘플 모드에서는 동작하지 않습니다.');return;}
+  if(!confirm(`'${nm2}' 계정의 비밀번호를 0000으로 초기화할까요?`))return;
+  const ph=await hashPw('0000');
+  const{error}=await sb.from('admin_users').update({password_hash:ph}).eq('id',id);
+  if(error){alert('오류: '+error.message);return;}
+  alert('초기화 완료. 임시 비밀번호: 0000');
+}
+async function createTeacherAcct(){
+  const lid=document.getElementById('ta_id').value.trim();
+  const pw=document.getElementById('ta_pw').value.trim();
+  const inst=document.getElementById('ta_inst').value;
+  if(!lid||!pw||!inst){alert('아이디·비밀번호·강사를 모두 입력해 주세요.');return;}
+  if(!LIVE){alert('샘플 모드에서는 동작하지 않습니다.');return;}
+  const dup=await sb.from('admin_users').select('id').eq('login_id',lid);
+  if(dup.data&&dup.data.length){alert('이미 사용 중인 아이디입니다.');return;}
+  const ph=await hashPw(pw);
+  const roleId=(await sb.from('admin_roles').select('id').eq('code','TEACHER')).data[0].id;
+  const instName=name('instructors',+inst);
+  const{error}=await sb.from('admin_users').insert({
+    email:lid+'@flanet.local', name:instName, role_id:roleId, login_id:lid, password_hash:ph, instructor_id:+inst
+  });
+  if(error){alert('생성 오류: '+error.message);return;}
+  alert(`강사 계정 생성 완료.\n아이디: ${lid}\n이 계정으로 로그인하면 ${instName} 강사의 강의만 보입니다.`);
+  renderAccounts();
+}
+
 function renderMaster(){
   const tabs=[['subjects','과목'],['instructors','강사'],['rooms','장소'],['target_groups','대상그룹']];
   const t=masterTab;
@@ -687,6 +777,70 @@ async function exportTimetableImg(scale){
   if(btn)btn.textContent=orig;
 }
 
+// ════════ 어드민 로그인 + 권한 ════════
+let currentAdmin=null; // {id,name,role,instructor_id}
+async function hashPw(pw){
+  const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pw+'_flanet'));
+  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function isAdmin(){return currentAdmin && currentAdmin.role==='SUPER_ADMIN';}
+function isTeacher(){return currentAdmin && currentAdmin.role==='TEACHER';}
+
+function renderLoginGate(){
+  document.querySelector('.layout').style.display='none';
+  let g=document.getElementById('loginGate');
+  if(!g){g=document.createElement('div');g.id='loginGate';document.body.appendChild(g);}
+  g.style.cssText='position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--paper);z-index:100;padding:20px;';
+  g.innerHTML=`
+    <div style="width:100%;max-width:360px;">
+      <div style="text-align:center;margin-bottom:22px;">
+        <div style="font-size:20px;font-weight:700;">플래닛 아카데미</div>
+        <div style="font-size:13px;color:var(--ink-soft);margin-top:3px;">관리자 · 강사 로그인</div>
+      </div>
+      <div class="card">
+        <div class="field"><label>아이디</label><input id="ad_id" placeholder="아이디" autocomplete="username"></div>
+        <div class="field"><label>비밀번호</label><input id="ad_pw" type="password" placeholder="비밀번호" autocomplete="current-password" onkeydown="if(event.key==='Enter')adminLogin()"></div>
+        <button class="btn primary" style="width:100%;" onclick="adminLogin()">로그인</button>
+        ${LIVE?'':'<p class="muted" style="font-size:12px;text-align:center;margin-top:10px;color:var(--ink-soft);">샘플 모드: 아무 값이나 입력하면 관리자로 들어갑니다.</p>'}
+      </div>
+    </div>`;
+}
+async function adminLogin(){
+  const lid=document.getElementById('ad_id').value.trim();
+  const pw=document.getElementById('ad_pw').value;
+  if(!lid||!pw){alert('아이디와 비밀번호를 입력해 주세요.');return;}
+  if(LIVE){
+    const ph=await hashPw(pw);
+    const res=await sb.from('admin_users').select('*, admin_roles(code)').eq('login_id',lid).eq('password_hash',ph);
+    if(!res.data||!res.data.length){alert('아이디 또는 비밀번호가 올바르지 않습니다.');return;}
+    const u=res.data[0];
+    currentAdmin={id:u.id,name:u.name,role:u.admin_roles?u.admin_roles.code:'TEACHER',instructor_id:u.instructor_id};
+  } else {
+    currentAdmin={id:1,name:'관리자(샘플)',role:'SUPER_ADMIN',instructor_id:null};
+  }
+  startApp();
+}
+function adminLogout(){currentAdmin=null;location.reload();}
+
+function startApp(){
+  const g=document.getElementById('loginGate'); if(g)g.remove();
+  document.querySelector('.layout').style.display='flex';
+  // 강사면 본인 강의로 시간표 필터 고정 + 메뉴 제한
+  if(isTeacher()){
+    ttFilter=currentAdmin.instructor_id;
+    // 강사가 못 보는 메뉴 숨김 (학생/기초자료/백업)
+    document.querySelectorAll('.navbtn').forEach(b=>{
+      if(['students','master','accounts'].includes(b.dataset.view)) b.style.display='none';
+      if(b.id==='backupBtn') b.style.display='none';
+    });
+  }
+  // 연결 상태 표시에 로그인 정보 추가
+  const txt=document.getElementById('connTxt');
+  if(txt) txt.textContent=(currentAdmin.name)+' · '+(isAdmin()?'관리자':'강사');
+  view='timetable';
+  render();
+}
+
 // ════════ 시작 ════════
 (async function init(){
   const dot=document.getElementById('connDot'),txt=document.getElementById('connTxt');
@@ -694,7 +848,7 @@ async function exportTimetableImg(scale){
     try{await loadAll();dot.classList.add('on');txt.textContent='Supabase 연결됨';}
     catch(e){LIVE=false;txt.textContent='연결 실패 · 샘플';}
   }
-  render();
+  renderLoginGate(); // 로그인 먼저
 })();
 </script>
 </body>
