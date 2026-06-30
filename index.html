@@ -68,6 +68,21 @@
     padding:6px 12px;border-radius:20px;cursor:pointer;font-size:12.5px;font-weight:500;}
   .ttchip:hover{border-color:#c8cdc6;color:var(--ink);}
   .ttchip.on{background:var(--brand);color:#fff;border-color:var(--brand);font-weight:600;}
+  .cal-head{display:grid;grid-template-columns:repeat(7,1fr);background:#f6f8f5;border-bottom:1px solid var(--line);}
+  .cal-head>div{padding:8px 0;text-align:center;font-size:12px;font-weight:600;color:var(--ink-soft);}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);}
+  .cal-cell{min-height:84px;border-right:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);
+    padding:4px;cursor:pointer;overflow:hidden;}
+  .cal-cell:nth-child(7n){border-right:none;}
+  .cal-cell.empty{background:#fafbf9;cursor:default;}
+  .cal-cell:hover:not(.empty){background:#f6f8f5;}
+  .cal-cell.today{background:var(--brand-soft);}
+  .cal-d{font-size:12.5px;font-weight:600;margin-bottom:3px;}
+  .cal-d.sun{color:#c0392b;} .cal-d.sat{color:#3a5fc2;}
+  .cal-ev{font-size:10px;color:#fff;border-radius:3px;padding:1px 4px;margin-bottom:2px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .cal-more{font-size:10px;color:var(--ink-soft);padding-left:3px;}
+  @media(max-width:680px){.cal-cell{min-height:62px;}.cal-ev{font-size:8.5px;}}
   .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;}
   .legend span{display:inline-flex;align-items:center;gap:6px;}
   .sw{width:14px;height:14px;border-radius:3px;border:1px solid var(--line);}
@@ -145,6 +160,7 @@
     <button class="navbtn" data-view="courses"><span class="ic">▤</span><span>강좌 관리</span></button>
     <button class="navbtn" data-view="students"><span class="ic">☺</span><span>학생·수강신청</span></button>
     <button class="navbtn" data-view="master"><span class="ic">⚙</span><span>기초자료</span></button>
+    <button class="navbtn" data-view="calendar"><span class="ic">📅</span><span>학사 캘린더</span></button>
     <button class="navbtn" data-view="accounts" id="accountsBtn"><span class="ic">🔑</span><span>계정관리</span></button>
     <button class="navbtn" id="backupBtn" style="margin-top:8px;"><span class="ic">⤓</span><span>시트 백업</span></button>
     <button class="navbtn" id="logoutBtn" onclick="adminLogout()"><span class="ic">↩</span><span>로그아웃</span></button>
@@ -184,6 +200,14 @@ const durMin = (a,b)=>{const m=t=>{let[h,mn]=(t||'0:0').split(':');return +h*60+
 // ── 샘플 데이터 (Supabase 연결 전 미리보기용) ──
 let DB = {
   semesters:[{id:1,name:'2026 여름학기',start_date:'2026-07-01',end_date:'2026-07-20',is_active:true}],
+  schools:[
+    {id:1,name:'플래닛초등학교',color:'#2f6f5b'},
+    {id:2,name:'한빛중학교',color:'#c2683a'},
+    {id:3,name:'서울고등학교',color:'#3a5fc2'}],
+  school_events:[
+    {id:1,school_id:1,title:'여름방학',type:'VACATION',start_date:'2026-07-21',end_date:'2026-08-18'},
+    {id:2,school_id:2,title:'1학기 기말고사',type:'EXAM',start_date:'2026-07-06',end_date:'2026-07-10'},
+    {id:3,school_id:3,title:'개학',type:'SEMESTER_START',start_date:'2026-08-19',end_date:null}],
   subjects:[{id:1,name:'영어'},{id:2,name:'논술'},{id:3,name:'과학'},{id:4,name:'수학'},{id:5,name:'국어'}],
   instructors:[{id:1,name:'임수민'},{id:2,name:'이수림'},{id:3,name:'강인실'},{id:4,name:'황지현'}],
   rooms:[{id:1,name:'2층 사랑방'},{id:2,name:'4층 갈색집'},{id:3,name:'12호 은혜방'},{id:4,name:'12호 믿음방'}],
@@ -241,7 +265,7 @@ function setView(v){view=v;
   render();}
 document.querySelectorAll('.navbtn').forEach(b=>b.onclick=()=>setView(b.dataset.view));
 
-function render(){({search:renderSearch,timetable:renderTimetable,courses:renderCourses,students:renderStudents,master:renderMaster,accounts:renderAccounts}[view])();}
+function render(){({search:renderSearch,timetable:renderTimetable,courses:renderCourses,students:renderStudents,master:renderMaster,accounts:renderAccounts,calendar:renderCalendar}[view])();}
 
 function head(title,sub,btn){
   return `<div class="head"><div><h1>${title}</h1><div class="sub">${sub}</div></div>${btn||''}</div>`;
@@ -573,6 +597,118 @@ function studentForm(id){
 // ── 기초자료 ──
 let masterTab='subjects';
 // ════════ 계정관리 (관리자 전용) ════════
+async // ════════ 학사 캘린더 ════════
+let calYear=new Date().getFullYear(), calMonth=new Date().getMonth(); // 0-based
+let calSchoolFilter=null; // null=전체
+const EVENT_TYPE={EXAM:'시험기간',VACATION:'방학',SEMESTER_START:'개학',EVENT:'기타'};
+const EVENT_COLOR={EXAM:'#c0392b',VACATION:'#2f8f6f',SEMESTER_START:'#3a5fc2',EVENT:'#7a6a3a'};
+
+function eventsOn(dateStr){
+  return (DB.school_events||[]).filter(e=>{
+    if(calSchoolFilter!=null && e.school_id!==calSchoolFilter) return false;
+    const s=e.start_date, en=e.end_date||e.start_date;
+    return dateStr>=s && dateStr<=en;
+  });
+}
+function renderCalendar(){
+  const first=new Date(calYear,calMonth,1);
+  const startDow=first.getDay(); // 0=일
+  const daysInMonth=new Date(calYear,calMonth+1,0).getDate();
+  const today=new Date(); const todayStr=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+
+  let cells='';
+  for(let i=0;i<startDow;i++) cells+='<div class="cal-cell empty"></div>';
+  for(let d=1;d<=daysInMonth;d++){
+    const ds=`${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const evs=eventsOn(ds);
+    const dow=(startDow+d-1)%7;
+    const isToday=ds===todayStr;
+    const bars=evs.slice(0,3).map(e=>{
+      const sc=DB.schools.find(s=>s.id===e.school_id);
+      return `<div class="cal-ev" style="background:${EVENT_COLOR[e.type]||'#777'};" title="${(sc?sc.name+' · ':'')}${e.title}">${e.title}</div>`;
+    }).join('');
+    const more=evs.length>3?`<div class="cal-more">+${evs.length-3}</div>`:'';
+    cells+=`<div class="cal-cell ${isToday?'today':''}" onclick="dayDetail('${ds}')">
+      <div class="cal-d ${dow===0?'sun':''} ${dow===6?'sat':''}">${d}</div>${bars}${more}</div>`;
+  }
+
+  const schoolChips=`<button class="ttchip ${calSchoolFilter==null?'on':''}" onclick="calSchoolFilter=null;renderCalendar()">전체 학교</button>`+
+    (DB.schools||[]).map(s=>`<button class="ttchip ${calSchoolFilter===s.id?'on':''}" onclick="calSchoolFilter=${s.id};renderCalendar()">${s.name}</button>`).join('');
+
+  main.innerHTML=head('학사 캘린더','학교별 시험·방학·개학 일정을 관리합니다. 날짜를 누르면 상세/추가할 수 있어요.',
+    isAdmin()?`<button class="btn primary" onclick="eventForm()">+ 일정 추가</button>`:'')+`
+    <div class="ttfilter">${schoolChips}</div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:12px;">
+      <button class="btn sm" onclick="calMove(-1)">‹ 이전</button>
+      <div style="font-weight:700;font-size:16px;min-width:130px;text-align:center;">${calYear}년 ${calMonth+1}월</div>
+      <button class="btn sm" onclick="calMove(1)">다음 ›</button>
+    </div>
+    <div class="legend" style="justify-content:center;">
+      ${Object.keys(EVENT_TYPE).map(k=>`<span><i class="sw" style="background:${EVENT_COLOR[k]}"></i>${EVENT_TYPE[k]}</span>`).join('')}
+    </div>
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div class="cal-head">${['일','월','화','수','목','금','토'].map((w,i)=>`<div class="${i===0?'sun':i===6?'sat':''}">${w}</div>`).join('')}</div>
+      <div class="cal-grid">${cells}</div>
+    </div>`;
+}
+function calMove(n){ calMonth+=n; if(calMonth<0){calMonth=11;calYear--;} if(calMonth>11){calMonth=0;calYear++;} renderCalendar(); }
+function dayDetail(ds){
+  const evs=eventsOn(ds);
+  let body=evs.length?evs.map(e=>{
+    const sc=DB.schools.find(s=>s.id===e.school_id);
+    const range=e.end_date&&e.end_date!==e.start_date?`${e.start_date} ~ ${e.end_date}`:e.start_date;
+    return `<div style="padding:9px 0;border-bottom:1px solid var(--line-soft);">
+      <div><span class="tag" style="background:${EVENT_COLOR[e.type]}22;color:${EVENT_COLOR[e.type]};">${EVENT_TYPE[e.type]}</span> <b>${e.title}</b></div>
+      <div class="muted" style="font-size:12px;">${sc?sc.name+' · ':''}${range}</div>
+      ${isAdmin()?`<button class="btn sm ghost" style="margin-top:4px;" onclick="delEvent(${e.id})">삭제</button>`:''}
+    </div>`;
+  }).join(''):'<div class="muted" style="padding:10px 0;">이 날짜에 등록된 일정이 없습니다.</div>';
+  openModal(`${ds} 일정`,body+(isAdmin()?`<button class="btn primary" style="width:100%;margin-top:10px;" onclick="closeModal();eventForm(null,'${ds}')">+ 이 날짜에 일정 추가</button>`:''),null);
+  // openModal은 저장버튼 구조라, 여기선 저장버튼 숨김 처리
+  const sb2=document.getElementById('saveBtn'); if(sb2)sb2.style.display='none';
+}
+function eventForm(id,presetDate){
+  const e=id?(DB.school_events.find(x=>x.id===id)||{}):{start_date:presetDate||''};
+  openModal('학사일정 추가',`
+    <div class="field"><label>학교</label>
+      <select id="ev_school"><option value="">전체 공통</option>
+        ${DB.schools.map(s=>`<option value="${s.id}" ${s.id===e.school_id?'selected':''}>${s.name}</option>`).join('')}
+      </select></div>
+    <div class="field"><label>구분</label>
+      <select id="ev_type">
+        ${Object.keys(EVENT_TYPE).map(k=>`<option value="${k}" ${k===e.type?'selected':''}>${EVENT_TYPE[k]}</option>`).join('')}
+      </select></div>
+    <div class="field"><label>제목</label><input id="ev_title" value="${(e.title||'').replace(/"/g,'&quot;')}" placeholder="예: 1학기 기말고사"></div>
+    <div class="grid2">
+      <div class="field"><label>시작일</label><input id="ev_start" type="date" value="${e.start_date||''}"></div>
+      <div class="field"><label>종료일(하루면 비움)</label><input id="ev_end" type="date" value="${e.end_date||''}"></div>
+    </div>`,
+    async()=>{
+      if(!val('ev_title')){alert('제목을 입력해 주세요.');return;}
+      if(!val('ev_start')){alert('시작일을 선택해 주세요.');return;}
+      const obj={
+        school_id:val('ev_school')?+val('ev_school'):null,
+        type:val('ev_type'), title:val('ev_title'),
+        start_date:val('ev_start'), end_date:val('ev_end')||null
+      };
+      if(LIVE){
+        const r=await sb.from('school_events').insert(obj).select();
+        if(r.error){alert('저장 오류: '+r.error.message);return;}
+        await loadAll();
+      } else {
+        const nid=Math.max(0,...DB.school_events.map(x=>x.id))+1;
+        DB.school_events.push({id:nid,...obj});
+      }
+      closeModal(); renderCalendar();
+    });
+}
+async function delEvent(id){
+  if(!confirm('이 일정을 삭제할까요?'))return;
+  if(LIVE){const{error}=await sb.from('school_events').delete().eq('id',id);if(error){alert(error.message);return;}await loadAll();}
+  else{DB.school_events=DB.school_events.filter(x=>x.id!==id);}
+  closeModal(); renderCalendar();
+}
+
 async function renderAccounts(){
   if(!isAdmin()){main.innerHTML=head('접근 불가','관리자만 사용할 수 있는 메뉴입니다.');return;}
   // 강사 어드민 계정 목록
@@ -759,7 +895,7 @@ async function del(table,id){
 // ════════ Supabase 데이터 로드 ════════
 async function loadAll(){
   if(!LIVE)return;
-  const t=['semesters','subjects','instructors','rooms','target_groups','courses','students','enrollments'];
+  const t=['semesters','subjects','instructors','rooms','target_groups','courses','students','enrollments','schools','school_events'];
   for(const tb of t){const{data,error}=await sb.from(tb).select('*');if(!error&&data)DB[tb]=data;}
   // 강좌의 세션·강사 연결 로드
   const cs=await sb.from('course_sessions').select('*');
