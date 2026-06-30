@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>플래닛 아카데미 · 수업관리</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<style>
+  :root{
+    --ink:#1f2421; --ink-soft:#5b635d; --line:#e3e6e1; --line-soft:#eef0ec;
+    --paper:#fbfcfa; --card:#ffffff; --brand:#2f6f5b; --brand-soft:#e6f0ec;
+    --warn-bg:#fbe9c8; --warn-ink:#7a5310; --danger-bg:#f6cccc; --danger-ink:#8a2020;
+    --both-bg:#e88a8a; --both-ink:#5c1414;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font-family:'Pretendard',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    font-size:14px;line-height:1.6;}
+  a{color:inherit;}
+  .layout{display:flex;min-height:100vh;}
+  /* sidebar */
+  .side{width:208px;flex-shrink:0;background:var(--card);border-right:1px solid var(--line);
+    padding:20px 14px;display:flex;flex-direction:column;gap:4px;}
+  .brand{font-size:15px;font-weight:700;letter-spacing:-.02em;padding:6px 10px 14px;}
+  .brand small{display:block;font-size:11px;font-weight:500;color:var(--ink-soft);letter-spacing:0;}
+  .navbtn{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:8px;
+    cursor:pointer;color:var(--ink-soft);font-weight:500;border:none;background:none;
+    width:100%;text-align:left;font-size:13.5px;}
+  .navbtn:hover{background:var(--line-soft);color:var(--ink);}
+  .navbtn.active{background:var(--brand-soft);color:var(--brand);font-weight:600;}
+  .navbtn .ic{width:17px;text-align:center;}
+  .conn{margin-top:auto;font-size:11px;color:var(--ink-soft);padding:8px 10px;
+    border-top:1px solid var(--line);}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;
+    vertical-align:middle;background:#c0c0c0;}
+  .dot.on{background:var(--brand);}
+  /* main */
+  .main{flex:1;padding:26px 30px;min-width:0;}
+  .head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap;}
+  h1{font-size:19px;font-weight:700;letter-spacing:-.02em;margin:0;}
+  .sub{font-size:12.5px;color:var(--ink-soft);margin-top:2px;}
+  .btn{border:1px solid var(--line);background:var(--card);color:var(--ink);
+    padding:8px 14px;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;}
+  .btn:hover{border-color:#c8cdc6;}
+  .btn.primary{background:var(--brand);color:#fff;border-color:var(--brand);}
+  .btn.primary:hover{background:#275e4d;}
+  .btn.sm{padding:5px 9px;font-size:12px;font-weight:500;}
+  .btn.ghost{border:none;background:none;color:var(--ink-soft);}
+  .btn.ghost:hover{color:var(--brand);}
+  /* card + table */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th{text-align:left;font-weight:600;color:var(--ink-soft);font-size:11.5px;
+    text-transform:uppercase;letter-spacing:.04em;padding:11px 14px;border-bottom:1px solid var(--line);}
+  td{padding:11px 14px;border-bottom:1px solid var(--line-soft);vertical-align:middle;}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:#fafbf9;}
+  .tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11.5px;font-weight:600;
+    background:var(--brand-soft);color:var(--brand);}
+  .muted{color:var(--ink-soft);}
+  .row-actions{display:flex;gap:4px;justify-content:flex-end;}
+  /* timetable */
+  .ttfilter{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
+  .ttchip{border:1px solid var(--line);background:var(--card);color:var(--ink-soft);
+    padding:6px 12px;border-radius:20px;cursor:pointer;font-size:12.5px;font-weight:500;}
+  .ttchip:hover{border-color:#c8cdc6;color:var(--ink);}
+  .ttchip.on{background:var(--brand);color:#fff;border-color:var(--brand);font-weight:600;}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;}
+  .legend span{display:inline-flex;align-items:center;gap:6px;}
+  .sw{width:14px;height:14px;border-radius:3px;border:1px solid var(--line);}
+  .tt-wrap{overflow-x:auto;}
+  table.tt{table-layout:fixed;min-width:620px;}
+  table.tt th,table.tt td{border:1px solid var(--line);text-align:center;}
+  table.tt th{padding:7px 4px;background:#f6f8f5;}
+  table.tt td{height:40px;padding:2px;font-size:11px;}
+  .tcol{width:46px;}
+  .cls{border-radius:5px;padding:3px 5px;margin:1px 0;line-height:1.25;cursor:pointer;text-align:left;}
+  .cls b{font-weight:700;}
+  .cls.ok{background:var(--card);border:1px solid var(--line);}
+  .cls.warn{background:var(--warn-bg);color:var(--warn-ink);}
+  .cls.room{background:var(--danger-bg);color:var(--danger-ink);}
+  .cls.both{background:var(--both-bg);color:var(--both-ink);}
+  /* tabs */
+  .tabs{display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--line);}
+  .tab{padding:8px 14px;cursor:pointer;font-weight:600;font-size:13px;color:var(--ink-soft);
+    border-bottom:2px solid transparent;margin-bottom:-1px;}
+  .tab.active{color:var(--brand);border-bottom-color:var(--brand);}
+  /* modal */
+  .overlay{position:fixed;inset:0;background:rgba(20,28,24,.4);display:none;
+    align-items:center;justify-content:center;padding:20px;z-index:50;}
+  .overlay.show{display:flex;}
+  .modal{background:var(--card);border-radius:14px;width:100%;max-width:480px;
+    max-height:90vh;overflow:auto;padding:22px 24px;}
+  .modal h3{margin:0 0 16px;font-size:16px;}
+  .field{margin-bottom:13px;}
+  .field label{display:block;font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:5px;}
+  .field input,.field select{width:100%;padding:8px 10px;border:1px solid var(--line);
+    border-radius:8px;font-size:13.5px;font-family:inherit;background:#fff;}
+  .field input:focus,.field select:focus{outline:none;border-color:var(--brand);}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:18px;}
+  .sess-row{display:grid;grid-template-columns:84px 1fr auto 1fr 1.1fr auto;gap:6px;margin-bottom:7px;align-items:center;}
+  .sess-row .tilde{color:var(--ink-soft);text-align:center;font-size:13px;}
+  .sess-row select,.sess-row input{padding:7px 8px;border:1px solid var(--line);border-radius:8px;font-size:13px;font-family:inherit;background:#fff;width:100%;}
+  .sess-row select:focus,.sess-row input:focus{outline:none;border-color:var(--brand);}
+  .sess-del{border:none;background:none;color:var(--ink-soft);cursor:pointer;font-size:18px;line-height:1;padding:0 4px;}
+  .sess-del:hover{color:var(--danger-ink);}
+  @media(max-width:560px){
+    .sess-row{grid-template-columns:1fr 1fr;}
+    .sess-row .tilde{display:none;}
+    .sess-row .s_room{grid-column:1/3;}
+  }
+  .empty{padding:40px;text-align:center;color:var(--ink-soft);}
+  .banner{background:#fff7e6;border:1px solid #f0d9a8;color:#7a5310;padding:10px 14px;
+    border-radius:8px;font-size:12.5px;margin-bottom:18px;}
+  @media(max-width:680px){
+    .layout{flex-direction:column;}
+    .side{width:100%;flex-direction:row;border-right:none;border-top:1px solid var(--line);
+      padding:6px 4px;gap:2px;position:fixed;bottom:0;left:0;right:0;background:var(--card);z-index:40;
+      box-shadow:0 -2px 8px rgba(0,0,0,.04);}
+    .brand,.conn{display:none;}
+    .navbtn{flex-direction:column;gap:3px;padding:7px 4px;font-size:10.5px;flex:1;text-align:center;border-radius:8px;}
+    .navbtn .ic{font-size:17px;}
+    #backupBtn{margin-top:0;}
+    .main{padding:16px 13px 78px;}
+    h1{font-size:17px;}
+    .head{margin-bottom:14px;}
+    .modal{max-width:100%;padding:18px 16px;border-radius:14px 14px 0 0;align-self:flex-end;}
+    .overlay{align-items:flex-end;padding:0;}
+    .grid2{grid-template-columns:1fr;}
+    th,td{padding:9px 8px;font-size:12.5px;}
+    .ttchip{padding:6px 11px;font-size:12px;}
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <div class="brand">플래닛 아카데미<small>수업관리 어드민</small></div>
+    <button class="navbtn active" data-view="timetable"><span class="ic">▦</span><span>주간 시간표</span></button>
+    <button class="navbtn" data-view="courses"><span class="ic">▤</span><span>강좌 관리</span></button>
+    <button class="navbtn" data-view="students"><span class="ic">☺</span><span>학생·수강신청</span></button>
+    <button class="navbtn" data-view="master"><span class="ic">⚙</span><span>기초자료</span></button>
+    <button class="navbtn" data-view="accounts" id="accountsBtn"><span class="ic">🔑</span><span>계정관리</span></button>
+    <button class="navbtn" id="backupBtn" style="margin-top:8px;"><span class="ic">⤓</span><span>시트 백업</span></button>
+    <button class="navbtn" id="logoutBtn" onclick="adminLogout()"><span class="ic">↩</span><span>로그아웃</span></button>
+    <div class="conn"><span class="dot" id="connDot"></span><span id="connTxt">샘플 데이터</span></div>
+  </aside>
+  <main class="main" id="main"></main>
+</div>
+
+<div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+//  ① Supabase 연결 정보 — 아래 두 값만 본인 것으로 바꾸세요.
+//     (Supabase 대시보드 → Settings → API 에서 복사)
+
+//     anon public 키만 사용! service_role 키는 절대 넣지 마세요.
+// ════════════════════════════════════════════════════════════
+const SUPABASE_URL = "https://eohwddjxoyccxmcrdsvp.supabase.co";   // 예: https://xxxx.supabase.co
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvaHdkZGp4b3ljY3htY3Jkc3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2NDIxODEsImV4cCI6MjA5ODIxODE4MX0.iAzj7u7I10qmCgvK9eqcDi6kW8BdM8NX4ZO_QN2qLmc";
+
+// ② 구글 시트 백업 주소 — Apps Script 배포 후 받은 웹앱 URL을 넣으세요.
+//    (설정 방법은 '구글시트_백업_설정가이드' 참고)
+const SHEET_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxpnh3ogV4K3d1Y7gF0BCmFPR_l5ZhWYiCPrJgUuvvuERVRT1q4z3d3uGqUoisQIVkB/exec";
+
+let sb = null, LIVE = false;
+try {
+  if (SUPABASE_URL.startsWith("http") && SUPABASE_KEY.length > 20) {
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    LIVE = true;
+  }
+} catch(e){ console.warn(e); }
+
+const WD = ['','월','화','수','목','금','토','일'];
+const hhmm = t => (t||'').slice(0,5);
+const durMin = (a,b)=>{const m=t=>{let[h,mn]=(t||'0:0').split(':');return +h*60+ +mn;};return Math.max(0,m(b)-m(a));};
+
+// ── 샘플 데이터 (Supabase 연결 전 미리보기용) ──
+let DB = {
+  semesters:[{id:1,name:'2026 여름학기',start_date:'2026-07-01',end_date:'2026-07-20',is_active:true}],
+  subjects:[{id:1,name:'영어'},{id:2,name:'논술'},{id:3,name:'과학'},{id:4,name:'수학'},{id:5,name:'국어'}],
+  instructors:[{id:1,name:'임수민'},{id:2,name:'이수림'},{id:3,name:'강인실'},{id:4,name:'황지현'}],
+  rooms:[{id:1,name:'2층 사랑방'},{id:2,name:'4층 갈색집'},{id:3,name:'12호 은혜방'},{id:4,name:'12호 믿음방'}],
+  target_groups:[
+    {id:1,label:'7세',grade_from:0,grade_to:0,gender:'공용'},
+    {id:2,label:'초등 저학년',grade_from:1,grade_to:3,gender:'공용'},
+    {id:3,label:'초등 고학년',grade_from:4,grade_to:6,gender:'공용'},
+    {id:4,label:'초등 전체',grade_from:1,grade_to:6,gender:'공용'},
+    {id:5,label:'중등 전체',grade_from:7,grade_to:9,gender:'공용'},
+    {id:6,label:'고등 전체',grade_from:10,grade_to:12,gender:'공용'},
+    {id:7,label:'성인',grade_from:13,grade_to:13,gender:'공용'},
+    {id:8,label:'7세-초2',grade_from:0,grade_to:2,gender:'공용'},
+    {id:9,label:'초등 남',grade_from:1,grade_to:6,gender:'남'}],
+  courses:[
+    {id:1,subject_id:1,target_id:1,title:'영어어어',sessions_per_week:3,tuition:null,instructor_id:1,
+     sessions:[{room_id:3,weekday:3,start_time:'20:55',end_time:'21:55'}]},
+    {id:2,subject_id:1,target_id:8,title:'7세-초2반',sessions_per_week:2,tuition:72000,instructor_id:2,
+     sessions:[{room_id:2,weekday:3,start_time:'17:00',end_time:'17:40'}]},
+    {id:3,subject_id:2,target_id:9,title:'박사가 말아주는',sessions_per_week:1,tuition:80000,instructor_id:3,
+     sessions:[{room_id:1,weekday:6,start_time:'15:00',end_time:'17:00'}]},
+    {id:4,subject_id:1,target_id:8,title:'summer',sessions_per_week:2,tuition:100000,instructor_id:2,
+     sessions:[{room_id:2,weekday:2,start_time:'17:00',end_time:'18:00'}]}],
+  students:[
+    {id:1,name:'김하准',grade:2,parent_phone:'010-1234-5678'},
+    {id:2,name:'이도윤',grade:5,parent_phone:'010-2222-3333'}],
+  enrollments:[{id:1,student_id:1,course_id:2,status:'ENROLLED',payment_status:'PAID'}]
+};
+
+const name = (arr,id) => (DB[arr].find(x=>x.id===id)||{}).name || (DB[arr].find(x=>x.id===id)||{}).label || '-';
+
+// ── 충돌 판정 ──
+function conflicts(){
+  let flat=[];
+  DB.courses.forEach(c=>(c.sessions||[]).forEach(s=>flat.push({...s,course:c})));
+  flat.forEach(f=>{f.room=false;f.grade=false;});
+  const m=t=>{let[a,b]=t.split(':');return +a*60+ +b;};
+  for(let i=0;i<flat.length;i++)for(let j=i+1;j<flat.length;j++){
+    const a=flat[i],b=flat[j];
+    if(a.weekday!==b.weekday) continue;
+    if(!(m(a.start_time)<m(b.end_time)&&m(b.start_time)<m(a.end_time))) continue;
+    if(a.room_id===b.room_id){a.room=true;b.room=true;}
+    const ta=DB.target_groups.find(t=>t.id===a.course.target_id)||{};
+    const tb=DB.target_groups.find(t=>t.id===b.course.target_id)||{};
+    if(ta.grade_from<=tb.grade_to&&tb.grade_from<=ta.grade_to){a.grade=true;b.grade=true;}
+  }
+  return flat;
+}
+
+// ════════ 화면 ════════
+const main=document.getElementById('main');
+let view='timetable';
+
+function setView(v){view=v;
+  document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
+  render();}
+document.querySelectorAll('.navbtn').forEach(b=>b.onclick=()=>setView(b.dataset.view));
+
+function render(){({timetable:renderTimetable,courses:renderCourses,students:renderStudents,master:renderMaster,accounts:renderAccounts}[view])();}
+
+function head(title,sub,btn){
+  return `<div class="head"><div><h1>${title}</h1><div class="sub">${sub}</div></div>${btn||''}</div>`;
+}
+function connBanner(){
+  return LIVE?'':`<div class="banner">⚠ 지금은 <b>샘플 데이터</b>로 미리보기 중입니다. 파일 상단의 <b>SUPABASE_URL / SUPABASE_KEY</b>를 본인 것으로 바꾸면 실제 데이터에 연결됩니다.</div>`;
+}
+
+// ── 시간표 ──
+let ttFilter=null; // null=전체, 숫자=특정 강사 id
+function renderTimetable(){
+  const flat=conflicts().filter(f=> ttFilter==null ? true : f.course.instructor_id===ttFilter);
+  let rows='';
+  for(let h=9;h<=22;h++){
+    rows+=`<tr><td class="tcol muted">${String(h).padStart(2,'0')}:00</td>`;
+    for(let wd=1;wd<=7;wd++){
+      const cells=flat.filter(f=>f.weekday===wd&&(+f.start_time.split(':')[0])===h);
+      rows+='<td>'+cells.map(f=>{
+        const cls=f.room&&f.grade?'both':f.room?'room':f.grade?'warn':'ok';
+        return `<div class="cls ${cls}" onclick="explain(${f.course.id})">
+          <b>${name('subjects',f.course.subject_id)}</b><br>${name('instructors',f.course.instructor_id)}<br>
+          ${hhmm(f.start_time)}~${hhmm(f.end_time)}<br>${name('rooms',f.room_id)}</div>`;
+      }).join('')+'</td>';
+    }
+    rows+='</tr>';
+  }
+  // 강사 필터 버튼들 — 강좌가 있는 강사만 표시 (자동 반영)
+  const activeInstIds=[...new Set(DB.courses.map(c=>c.instructor_id).filter(x=>x!=null))];
+  const activeInsts=DB.instructors.filter(i=>activeInstIds.includes(i.id));
+  const chips=`<button class="ttchip ${ttFilter==null?'on':''}" onclick="ttFilter=null;renderTimetable()">전체</button>`+
+    activeInsts.map(i=>`<button class="ttchip ${ttFilter===i.id?'on':''}" onclick="ttFilter=${i.id};renderTimetable()">${i.name}</button>`).join('');
+  const who = ttFilter==null ? '전체 강사' : ((DB.instructors.find(i=>i.id===ttFilter)||{}).name||'')+' 강사';
+  main.innerHTML=head('주간 시간표','강좌 칸을 누르면 충돌 상세를 볼 수 있어요. · 현재 보기: '+who,
+    `<button class="btn sm" id="ttImgBtn" onclick="exportTimetableImg(+document.getElementById('ttScale').value)">이미지 저장</button> <select id="ttScale" class="btn sm" style="padding:5px 8px;"><option value="2">2배(선명)</option><option value="1">1배(기본)</option><option value="3">3배(고화질)</option></select>`)+connBanner()+`
+    <div class="ttfilter">${chips}</div>
+    <div class="legend">
+      <span><i class="sw" style="background:#fff"></i>정상</span>
+      <span><i class="sw" style="background:var(--danger-bg)"></i>장소 충돌</span>
+      <span><i class="sw" style="background:var(--warn-bg)"></i>대상(학년) 충돌</span>
+      <span><i class="sw" style="background:var(--both-bg)"></i>장소+대상 충돌</span>
+    </div>
+    <div class="card tt-wrap"><table class="tt"><thead><tr><th class="tcol">시간</th>
+    ${[1,2,3,4,5,6,7].map(w=>`<th>${WD[w]}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+function explain(cid){
+  const flat=conflicts().filter(f=>f.course.id===cid);
+  const c=DB.courses.find(x=>x.id===cid);
+  let msg=`「${c.title}」(${name('subjects',c.subject_id)} · ${name('instructors',c.instructor_id)})\n\n`;
+  const conf=flat.filter(f=>f.room||f.grade);
+  if(!conf.length) msg+='충돌 없음 — 시간·장소·대상이 다른 강좌와 겹치지 않습니다.';
+  else conf.forEach(f=>{
+    msg+=`${WD[f.weekday]} ${hhmm(f.start_time)}~${hhmm(f.end_time)} @ ${name('rooms',f.room_id)}\n`;
+    if(f.room)msg+=' • 같은 시간·같은 장소를 쓰는 다른 강좌가 있습니다 (장소 충돌).\n';
+    if(f.grade)msg+=' • 같은 시간에 대상 학년이 겹치는 강좌가 있습니다 (대상 충돌).\n';
+  });
+  alert(msg);
+}
+
+// ── 강좌 관리 ──
+function renderCourses(){
+  const rows=DB.courses.map(c=>{
+    const s=(c.sessions||[]).map(x=>`${WD[x.weekday]} ${hhmm(x.start_time)}~${hhmm(x.end_time)}`).join(', ')||'-';
+    const room=(c.sessions||[])[0]?name('rooms',c.sessions[0].room_id):'-';
+    return `<tr>
+      <td><span class="tag">${name('subjects',c.subject_id)}</span></td>
+      <td><b>${c.title}</b></td>
+      <td>${name('instructors',c.instructor_id)}</td>
+      <td class="muted">${name('target_groups',c.target_id)}</td>
+      <td class="muted">${s}</td>
+      <td class="muted">${room}</td>
+      <td>${c.tuition?c.tuition.toLocaleString()+'원':'-'}</td>
+      <td><div class="row-actions">
+        <button class="btn sm" onclick="courseForm(${c.id})">수정</button>
+        <button class="btn sm ghost" onclick="del('courses',${c.id})">삭제</button>
+      </div></td></tr>`;
+  }).join('');
+  main.innerHTML=head('강좌 관리',`총 ${DB.courses.length}개 강좌`,
+    `<button class="btn sm" onclick="exportExcel('courses')" style="margin-right:6px;">엑셀 저장</button><button class="btn primary" onclick="courseForm()">+ 강좌 추가</button>`)+connBanner()+`
+    <div class="card"><table><thead><tr>
+      <th>과목</th><th>강좌명</th><th>강사</th><th>대상</th><th>요일·시간</th><th>장소</th><th>수강료</th><th></th>
+    </tr></thead><tbody>${rows||'<tr><td colspan="8" class="empty">강좌가 없습니다.</td></tr>'}</tbody></table></div>`;
+}
+// 선택+직접입력 겸용 칸 + 자동완성 목록 생성
+function combo(inputId,arr,curId,lbl){
+  const cur=curId?(DB[arr].find(x=>x.id===curId)||{}):{};
+  const curName=cur.name||cur.label||'';
+  const listId=inputId+'_list';
+  const opts=DB[arr].map(x=>`<option value="${(x.name||x.label||'').replace(/"/g,'&quot;')}">`).join('');
+  return `<input id="${inputId}" list="${listId}" value="${curName.replace(/"/g,'&quot;')}" placeholder="${lbl} 선택 또는 입력" autocomplete="off">
+    <datalist id="${listId}">${opts}</datalist>`;
+}
+// 입력한 이름으로 기존 id를 찾고, 없으면 마스터에 새로 만들어 id 반환
+async function resolveId(arr,inputId){
+  const raw=val(inputId).trim();
+  if(!raw) return null;
+  const found=DB[arr].find(x=>(x.name||x.label||'').trim()===raw);
+  if(found) return found.id;
+  let obj = arr==='target_groups'
+    ? {label:raw, grade_from:0, grade_to:6, gender:'공용'}
+    : {name:raw};
+  if(LIVE){
+    const res=await sb.from(arr).insert(obj).select();
+    if(res.error){alert('새 '+arr+' 추가 오류: '+res.error.message);return null;}
+    const row=res.data[0]; DB[arr].push(row); return row.id;
+  } else {
+    const nid=Math.max(0,...DB[arr].map(x=>x.id))+1;
+    DB[arr].push({id:nid,...obj}); return nid;
+  }
+}
+function courseForm(id){
+  const c=id?DB.courses.find(x=>x.id===id):{sessions:[{}]};
+  const sessions=(c.sessions&&c.sessions.length)?c.sessions:[{}];
+  // 회차 행 HTML 하나 생성
+  window._sessSeq=0;
+  function sessRow(s){
+    s=s||{};
+    const k=window._sessSeq++;
+    const roomList=DB.rooms.map(x=>`<option value="${(x.name||'').replace(/"/g,'&quot;')}">`).join('');
+    const curRoom=s.room_id?((DB.rooms.find(x=>x.id===s.room_id)||{}).name||''):'';
+    return `<div class="sess-row" data-k="${k}">
+      <select class="s_wd">${[1,2,3,4,5,6,7].map(w=>`<option value="${w}" ${w===s.weekday?'selected':''}>${WD[w]}요일</option>`).join('')}</select>
+      <input class="s_start" type="time" value="${hhmm(s.start_time)||'17:00'}">
+      <span class="tilde">~</span>
+      <input class="s_end" type="time" value="${hhmm(s.end_time)||'18:00'}">
+      <input class="s_room" list="roomList_${k}" value="${curRoom.replace(/"/g,'&quot;')}" placeholder="장소" autocomplete="off">
+      <datalist id="roomList_${k}">${roomList}</datalist>
+      <button type="button" class="sess-del" onclick="this.closest('.sess-row').remove()" aria-label="삭제">×</button>
+    </div>`;
+  }
+  openModal((id?'강좌 수정':'강좌 추가'),`
+    <div class="field"><label>강좌명</label><input id="f_title" value="${(c.title||'').replace(/"/g,'&quot;')}" placeholder="예: 여름 집중반"></div>
+    <div class="grid2">
+      <div class="field"><label>과목</label>${combo('f_subject','subjects',c.subject_id,'과목')}</div>
+      <div class="field"><label>대상</label>${combo('f_target','target_groups',c.target_id,'대상')}</div>
+    </div>
+    <div class="grid2">
+      <div class="field"><label>담당 강사</label>${combo('f_inst','instructors',c.instructor_id,'강사')}</div>
+      <div class="field"><label>수강료(원)</label><input id="f_tuition" type="number" value="${c.tuition||''}" placeholder="예: 80000"></div>
+    </div>
+    <div class="field"><label>정원(명) · 비우면 제한 없음</label><input id="f_capacity" type="number" value="${c.capacity||''}" placeholder="예: 10"></div>
+    <div class="field"><label>커리큘럼 이미지 주소(URL) · 선택</label><input id="f_curri_url" value="${(c.curriculum_url||'').replace(/"/g,'&quot;')}" placeholder="https://... .png/.jpg"></div>
+    <div class="field"><label>커리큘럼 설명 · 선택</label><textarea id="f_curri_text" rows="3" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13.5px;font-family:inherit;" placeholder="수업 내용·주차별 계획 등">${c.curriculum_text||''}</textarea></div>
+    <div class="field"><label>요일 · 시간 · 장소</label>
+      <div id="sessBox">${sessions.map(sessRow).join('')}</div>
+      <button type="button" class="btn sm" id="addSess" style="margin-top:4px;">+ 회차 추가 (주 2회·3회…)</button>
+      <div class="muted" style="font-size:11px;margin-top:6px;">※ 주 여러 회면 회차를 추가하세요. 장소는 목록에서 고르거나 직접 입력하면 새로 추가됩니다.</div>
+    </div>`,
+    async()=>{
+      if(!val('f_title')){alert('강좌명을 입력해 주세요.');return;}
+      const subject_id=await resolveId('subjects','f_subject');
+      const target_id=await resolveId('target_groups','f_target');
+      const instructor_id=await resolveId('instructors','f_inst');
+      // 회차 행들을 모두 읽어 세션 배열 구성 (장소는 이름→id 변환/생성)
+      const rows=[...document.querySelectorAll('#sessBox .sess-row')];
+      const sessOut=[];
+      for(const r of rows){
+        const roomName=r.querySelector('.s_room').value.trim();
+        let room_id=null;
+        if(roomName){
+          const f=DB.rooms.find(x=>(x.name||'').trim()===roomName);
+          if(f) room_id=f.id;
+          else { room_id=await resolveIdByName('rooms',roomName); }
+        }
+        sessOut.push({
+          weekday:+r.querySelector('.s_wd').value,
+          start_time:r.querySelector('.s_start').value,
+          end_time:r.querySelector('.s_end').value,
+          room_id
+        });
+      }
+      const obj={
+        title:val('f_title'), subject_id, target_id, instructor_id,
+        tuition:val('f_tuition')?+val('f_tuition'):null,
+        capacity:val('f_capacity')?+val('f_capacity'):null,
+        curriculum_url:val('f_curri_url')||null,
+        curriculum_text:(document.getElementById('f_curri_text')||{}).value||null,
+        sessions_per_week:sessOut.length,
+        sessions:sessOut
+      };
+      await save('courses',id,obj); closeModal(); renderCourses();
+    });
+  // "회차 추가" 버튼 동작 연결
+  document.getElementById('addSess').onclick=()=>{
+    document.getElementById('sessBox').insertAdjacentHTML('beforeend',sessRow({}));
+  };
+}
+// 이름으로 마스터 항목을 찾거나 새로 만들어 id 반환 (장소 등)
+async function resolveIdByName(arr,raw){
+  raw=raw.trim(); if(!raw) return null;
+  const found=DB[arr].find(x=>(x.name||x.label||'').trim()===raw);
+  if(found) return found.id;
+  let obj = arr==='target_groups'?{label:raw,grade_from:0,grade_to:6,gender:'공용'}:{name:raw};
+  if(LIVE){
+    const res=await sb.from(arr).insert(obj).select();
+    if(res.error){alert('새 '+arr+' 추가 오류: '+res.error.message);return null;}
+    DB[arr].push(res.data[0]); return res.data[0].id;
+  } else {
+    const nid=Math.max(0,...DB[arr].map(x=>x.id))+1;
+    DB[arr].push({id:nid,...obj}); return nid;
+  }
+}
+
+// ── 학생·수강신청 ──
+function renderStudents(){
+  const rows=DB.students.map(s=>{
+    const enr=DB.enrollments.filter(e=>e.student_id===s.id);
+    const list=enr.map(e=>{const c=DB.courses.find(x=>x.id===e.course_id);return c?c.title:'';}).filter(Boolean).join(', ')||'<span class="muted">없음</span>';
+    return `<tr>
+      <td><b>${s.name}</b></td>
+      <td class="muted">${s.grade?'초'+s.grade:'-'}</td>
+      <td class="muted">${s.parent_phone||'-'}</td>
+      <td>${list}</td>
+      <td><div class="row-actions">
+        <button class="btn sm" onclick="studentForm(${s.id})">수정</button>
+        <button class="btn sm ghost" onclick="del('students',${s.id})">삭제</button>
+      </div></td></tr>`;
+  }).join('');
+  const enrolled=c=>DB.enrollments.filter(e=>e.course_id===c.id&&e.status==='ENROLLED').length;
+  const counts=DB.courses.map(c=>`<tr><td><b>${c.title}</b></td><td>${name('subjects',c.subject_id)}</td><td>${enrolled(c)}명</td></tr>`).join('');
+  main.innerHTML=head('학생 · 수강신청',`총 ${DB.students.length}명`,
+    `<button class="btn sm" onclick="exportExcel('students')" style="margin-right:6px;">학생 엑셀</button><button class="btn sm" onclick="exportExcel('enrollments')" style="margin-right:6px;">신청 엑셀</button><button class="btn primary" onclick="studentForm()">+ 학생 추가</button>`)+connBanner()+`
+    <div class="card" style="margin-bottom:22px;"><table><thead><tr>
+      <th>이름</th><th>학년</th><th>학부모 연락처</th><th>수강 강좌</th><th></th>
+    </tr></thead><tbody>${rows||'<tr><td colspan="5" class="empty">학생이 없습니다.</td></tr>'}</tbody></table></div>
+    <h1 style="font-size:15px;margin:0 0 10px;">강좌별 등록 인원</h1>
+    <div class="card"><table><thead><tr><th>강좌</th><th>과목</th><th>등록</th></tr></thead><tbody>${counts}</tbody></table></div>`;
+}
+function studentForm(id){
+  const s=id?DB.students.find(x=>x.id===id):{};
+  openModal(id?'학생 수정':'학생 추가',`
+    <div class="field"><label>이름</label><input id="s_name" value="${s.name||''}"></div>
+    <div class="grid2">
+      <div class="field"><label>학년(초N, 7세=0)</label><input id="s_grade" type="number" value="${s.grade??''}"></div>
+      <div class="field"><label>학부모 연락처</label><input id="s_phone" value="${s.parent_phone||''}" placeholder="010-"></div>
+    </div>`,
+    async()=>{await save('students',id,{name:val('s_name'),grade:val('s_grade')?+val('s_grade'):null,parent_phone:val('s_phone')});closeModal();renderStudents();});
+}
+
+// ── 기초자료 ──
+let masterTab='subjects';
+// ════════ 계정관리 (관리자 전용) ════════
+async function renderAccounts(){
+  if(!isAdmin()){main.innerHTML=head('접근 불가','관리자만 사용할 수 있는 메뉴입니다.');return;}
+  // 강사 어드민 계정 목록
+  let teacherAccts=[];
+  if(LIVE){
+    const r=await sb.from('admin_users').select('*, admin_roles(code,name)');
+    if(r.data)teacherAccts=r.data;
+  }
+  const acctRows=teacherAccts.map(a=>`<tr>
+    <td><b>${a.name||'-'}</b></td><td class="muted">${a.login_id||'-'}</td>
+    <td>${a.admin_roles?a.admin_roles.name:'-'}</td>
+    <td>${a.instructor_id?name('instructors',a.instructor_id):'-'}</td>
+    <td><div class="row-actions">
+      <button class="btn sm" onclick="resetAdminPw(${a.id},'${(a.name||'').replace(/'/g,'')}')">비번 초기화</button>
+    </div></td></tr>`).join('');
+
+  main.innerHTML=head('계정관리','학생·강사 계정의 비밀번호를 초기화하고, 강사 계정을 만들 수 있어요.')+`
+    <div class="card" style="margin-bottom:22px;padding:16px;">
+      <div style="font-weight:600;margin-bottom:10px;">🔑 학생 비밀번호 초기화</div>
+      <div class="muted" style="font-size:12.5px;margin-bottom:10px;">학생이 비밀번호를 잊은 경우, 이름으로 찾아 임시 비밀번호로 초기화합니다.</div>
+      <div style="display:flex;gap:8px;">
+        <input id="resetName" placeholder="학생 이름" style="flex:1;padding:9px 11px;border:1px solid var(--line);border-radius:8px;">
+        <button class="btn primary" onclick="resetStudentPw()">초기화</button>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:22px;padding:16px;">
+      <div style="font-weight:600;margin-bottom:10px;">➕ 강사 계정 만들기</div>
+      <div class="grid2" style="margin-bottom:8px;">
+        <input id="ta_id" placeholder="강사 로그인 아이디" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;">
+        <input id="ta_pw" placeholder="초기 비밀번호" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;">
+      </div>
+      <div class="field" style="margin-bottom:8px;"><label>연결할 강사</label>
+        <select id="ta_inst" style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;">
+          <option value="">강사 선택</option>
+          ${DB.instructors.map(i=>`<option value="${i.id}">${i.name}</option>`).join('')}
+        </select>
+      </div>
+      <button class="btn primary" onclick="createTeacherAcct()">강사 계정 생성</button>
+    </div>
+    <div style="font-weight:600;margin-bottom:8px;">현재 어드민 계정</div>
+    <div class="card"><table><thead><tr><th>이름</th><th>아이디</th><th>권한</th><th>담당강사</th><th></th></tr></thead>
+    <tbody>${acctRows||'<tr><td colspan="5" class="empty">계정이 없습니다.</td></tr>'}</tbody></table></div>`;
+}
+// 학생 비번 초기화 → 임시비번 발급
+async function resetStudentPw(){
+  const nm2=document.getElementById('resetName').value.trim();
+  if(!nm2){alert('학생 이름을 입력해 주세요.');return;}
+  if(!LIVE){alert('샘플 모드에서는 동작하지 않습니다.');return;}
+  const r=await sb.from('students').select('id,name,login_id').eq('name',nm2);
+  if(!r.data||!r.data.length){alert('해당 이름의 학생을 찾을 수 없습니다.');return;}
+  if(r.data.length>1 && !confirm(`'${nm2}' 학생이 ${r.data.length}명 있습니다. 모두 초기화할까요?`))return;
+  const temp='0000';
+  const ph=await hashPw(temp);
+  for(const s of r.data){ await sb.from('students').update({password_hash:ph}).eq('id',s.id); }
+  alert(`초기화 완료.\n임시 비밀번호: ${temp}\n학생에게 알려주고 로그인 후 변경하도록 안내해 주세요.`);
+}
+async function resetAdminPw(id,nm2){
+  if(!LIVE){alert('샘플 모드에서는 동작하지 않습니다.');return;}
+  if(!confirm(`'${nm2}' 계정의 비밀번호를 0000으로 초기화할까요?`))return;
+  const ph=await hashPw('0000');
+  const{error}=await sb.from('admin_users').update({password_hash:ph}).eq('id',id);
+  if(error){alert('오류: '+error.message);return;}
+  alert('초기화 완료. 임시 비밀번호: 0000');
+}
+async function createTeacherAcct(){
+  const lid=document.getElementById('ta_id').value.trim();
+  const pw=document.getElementById('ta_pw').value.trim();
+  const inst=document.getElementById('ta_inst').value;
+  if(!lid||!pw||!inst){alert('아이디·비밀번호·강사를 모두 입력해 주세요.');return;}
+  if(!LIVE){alert('샘플 모드에서는 동작하지 않습니다.');return;}
+  const dup=await sb.from('admin_users').select('id').eq('login_id',lid);
+  if(dup.data&&dup.data.length){alert('이미 사용 중인 아이디입니다.');return;}
+  const ph=await hashPw(pw);
+  const roleId=(await sb.from('admin_roles').select('id').eq('code','TEACHER')).data[0].id;
+  const instName=name('instructors',+inst);
+  const{error}=await sb.from('admin_users').insert({
+    email:lid+'@flanet.local', name:instName, role_id:roleId, login_id:lid, password_hash:ph, instructor_id:+inst
+  });
+  if(error){alert('생성 오류: '+error.message);return;}
+  alert(`강사 계정 생성 완료.\n아이디: ${lid}\n이 계정으로 로그인하면 ${instName} 강사의 강의만 보입니다.`);
+  renderAccounts();
+}
+
+function renderMaster(){
+  const tabs=[['subjects','과목'],['instructors','강사'],['rooms','장소'],['target_groups','대상그룹']];
+  const t=masterTab;
+  let cols,rows;
+  if(t==='target_groups'){
+    cols='<th>표기</th><th>학년범위</th><th>성별</th><th></th>';
+    rows=DB[t].map(x=>`<tr><td><b>${x.label}</b></td><td class="muted">${x.grade_from}~${x.grade_to}</td><td class="muted">${x.gender||'-'}</td>
+      <td><div class="row-actions"><button class="btn sm ghost" onclick="del('${t}',${x.id})">삭제</button></div></td></tr>`).join('');
+  } else {
+    cols='<th>이름</th><th></th>';
+    rows=DB[t].map(x=>`<tr><td><b>${x.name}</b></td>
+      <td><div class="row-actions"><button class="btn sm ghost" onclick="del('${t}',${x.id})">삭제</button></div></td></tr>`).join('');
+  }
+  main.innerHTML=head('기초자료','과목·강사·장소·대상 마스터를 관리합니다.',
+    `<button class="btn primary" onclick="masterForm()">+ 추가</button>`)+connBanner()+`
+    <div class="tabs">${tabs.map(([k,l])=>`<div class="tab ${k===t?'active':''}" onclick="masterTab='${k}';renderMaster()">${l}</div>`).join('')}</div>
+    <div class="card"><table><thead><tr>${cols}</tr></thead><tbody>${rows||'<tr><td colspan="4" class="empty">항목이 없습니다.</td></tr>'}</tbody></table></div>`;
+}
+function masterForm(){
+  const t=masterTab;
+  let body;
+  if(t==='target_groups') body=`
+    <div class="field"><label>표기 (예: 초1-초6)</label><input id="m_label"></div>
+    <div class="muted" style="font-size:11px;margin-bottom:10px;">학년 코드: 7세=0 · 초1~6=1~6 · 중1~3=7~9 · 고1~3=10~12 · 성인=13</div>
+    <div class="grid2"><div class="field"><label>시작 학년</label><input id="m_from" type="number" value="1"></div>
+    <div class="field"><label>끝 학년</label><input id="m_to" type="number" value="6"></div></div>
+    <div class="field"><label>성별</label><select id="m_gender"><option>공용</option><option>남</option><option>여</option></select></div>`;
+  else body=`<div class="field"><label>이름</label><input id="m_name"></div>`;
+  openModal('항목 추가',body,async()=>{
+    let obj;
+    if(t==='target_groups')obj={label:val('m_label'),grade_from:+val('m_from'),grade_to:+val('m_to'),gender:val('m_gender')};
+    else obj={name:val('m_name')};
+    await save(t,null,obj);closeModal();renderMaster();
+  });
+}
+
+// ════════ 공통 유틸 + 저장 ════════
+const val=id=>document.getElementById(id).value.trim();
+function openModal(title,body,onSave){
+  document.getElementById('modal').innerHTML=`<h3>${title}</h3>${body}
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">취소</button>
+    <button class="btn primary" id="saveBtn">저장</button></div>`;
+  document.getElementById('overlay').classList.add('show');
+  document.getElementById('saveBtn').onclick=onSave;
+}
+function closeModal(){document.getElementById('overlay').classList.remove('show');}
+document.getElementById('overlay').onclick=e=>{if(e.target.id==='overlay')closeModal();};
+
+// 저장: Supabase 연결 시 DB에, 아니면 메모리(샘플)에
+async function save(table,id,obj){
+  if(LIVE){
+    if(table==='courses'){
+      // 강좌 본체 저장
+      let payload={...obj}; delete payload.sessions; delete payload.instructor_id;
+      // 새 강좌면 현재 활성 학기(또는 첫 학기)에 자동 소속
+      if(!id && !payload.semester_id){
+        const sem=(DB.semesters||[]).find(s=>s.is_active)||(DB.semesters||[])[0];
+        if(!sem){alert('등록된 학기가 없습니다.\nSupabase의 semesters 테이블에 학기를 먼저 추가해 주세요.');return;}
+        payload.semester_id=sem.id;
+      }
+      let res = id
+        ? await sb.from('courses').update(payload).eq('id',id).select()
+        : await sb.from('courses').insert(payload).select();
+      if(res.error){alert('저장 오류: '+res.error.message);return;}
+      const courseId = res.data[0].id;
+      // 세션 저장 (수정 시 기존 것 지우고 다시 넣음)
+      if(obj.sessions){
+        await sb.from('course_sessions').delete().eq('course_id',courseId);
+        const rows=obj.sessions.map(s=>({course_id:courseId,room_id:s.room_id,
+          weekday:s.weekday,start_time:s.start_time,end_time:s.end_time,
+          duration_min:durMin(s.start_time,s.end_time)}));
+        const r2=await sb.from('course_sessions').insert(rows);
+        if(r2.error)alert('세션 저장 오류: '+r2.error.message);
+      }
+      // 강사 연결 저장
+      if(obj.instructor_id){
+        await sb.from('course_instructors').delete().eq('course_id',courseId);
+        const r3=await sb.from('course_instructors').insert({course_id:courseId,instructor_id:obj.instructor_id,is_primary:true});
+        if(r3.error)alert('강사 연결 오류: '+r3.error.message);
+      }
+    } else {
+      let payload={...obj};
+      let res = id
+        ? await sb.from(table).update(payload).eq('id',id).select()
+        : await sb.from(table).insert(payload).select();
+      if(res.error){alert('저장 오류: '+res.error.message);return;}
+    }
+    await loadAll();
+  } else {
+    if(id){Object.assign(DB[table].find(x=>x.id===id),obj);}
+    else{const nid=Math.max(0,...DB[table].map(x=>x.id))+1;DB[table].push({id:nid,...obj});}
+  }
+}
+async function del(table,id){
+  if(!confirm('정말 삭제할까요?'))return;
+  if(LIVE){const{error}=await sb.from(table).delete().eq('id',id);if(error){alert(error.message);return;}await loadAll();}
+  else{DB[table]=DB[table].filter(x=>x.id!==id);}
+  render();
+}
+
+// ════════ Supabase 데이터 로드 ════════
+async function loadAll(){
+  if(!LIVE)return;
+  const t=['semesters','subjects','instructors','rooms','target_groups','courses','students','enrollments'];
+  for(const tb of t){const{data,error}=await sb.from(tb).select('*');if(!error&&data)DB[tb]=data;}
+  // 강좌의 세션·강사 연결 로드
+  const cs=await sb.from('course_sessions').select('*');
+  const ci=await sb.from('course_instructors').select('*');
+  if(cs.data&&ci.data){
+    DB.courses.forEach(c=>{
+      c.sessions=cs.data.filter(s=>s.course_id===c.id);
+      const link=ci.data.find(x=>x.course_id===c.id);
+      c.instructor_id=link?link.instructor_id:null;
+    });
+  }
+}
+
+// ════════ 구글 시트 백업 ════════
+async function backupToSheet(){
+  const btn=document.getElementById('backupBtn');
+  if(!SHEET_WEBHOOK_URL.startsWith('http')){
+    alert('아직 백업 주소가 설정되지 않았습니다.\n\n파일 상단의 SHEET_WEBHOOK_URL에 구글 Apps Script 웹앱 URL을 넣어주세요.\n(설정 방법: 구글시트_백업_설정가이드 참고)');
+    return;
+  }
+  const orig=btn.innerHTML;
+  btn.innerHTML='<span class="ic">⟳</span><span>백업 중…</span>';
+  // 시트에 보낼 데이터 정리 (sessions 같은 중첩은 펼쳐서 문자열로)
+  const payload={
+    courses:DB.courses.map(c=>({
+      id:c.id, 과목:name('subjects',c.subject_id), 강좌명:c.title,
+      강사:name('instructors',c.instructor_id), 대상:name('target_groups',c.target_id),
+      주당횟수:c.sessions_per_week, 수강료:c.tuition||'',
+      요일시간:(c.sessions||[]).map(s=>`${WD[s.weekday]} ${hhmm(s.start_time)}~${hhmm(s.end_time)} @${name('rooms',s.room_id)}`).join(' / ')
+    })),
+    students:DB.students.map(s=>({id:s.id,이름:s.name,학년:s.grade,학부모연락처:s.parent_phone||''})),
+    enrollments:DB.enrollments.map(e=>({id:e.id,
+      학생:name2('students',e.student_id), 강좌:(DB.courses.find(c=>c.id===e.course_id)||{}).title||'',
+      상태:e.status, 결제:e.payment_status})),
+    subjects:DB.subjects.map(x=>({id:x.id,과목:x.name})),
+    instructors:DB.instructors.map(x=>({id:x.id,강사:x.name})),
+    rooms:DB.rooms.map(x=>({id:x.id,장소:x.name})),
+    target_groups:DB.target_groups.map(x=>({id:x.id,표기:x.label,시작학년:x.grade_from,끝학년:x.grade_to,성별:x.gender||''}))
+  };
+  try{
+    await fetch(SHEET_WEBHOOK_URL,{method:'POST',mode:'no-cors',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify(payload)});
+    // no-cors라 응답을 읽을 수 없으므로 성공 가정 안내
+    alert('백업 요청을 보냈습니다.\n구글 시트를 열어 데이터가 기록됐는지 확인해 주세요.');
+  }catch(err){
+    alert('백업 중 오류: '+err.message);
+  }
+  btn.innerHTML=orig;
+}
+const name2=(arr,id)=>(DB[arr].find(x=>x.id===id)||{}).name||'-';
+document.getElementById('backupBtn').onclick=backupToSheet;
+
+// ════════ 엑셀 내보내기 (화면별) ════════
+function exportExcel(kind){
+  if(typeof XLSX==='undefined'){alert('엑셀 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return;}
+  let rows=[], fname='';
+  if(kind==='courses'){
+    fname='강좌목록';
+    rows=DB.courses.map(c=>({
+      과목:name('subjects',c.subject_id), 강좌명:c.title, 강사:name('instructors',c.instructor_id),
+      대상:name('target_groups',c.target_id),
+      '요일·시간':(c.sessions||[]).map(s=>`${WD[s.weekday]} ${hhmm(s.start_time)}~${hhmm(s.end_time)}`).join(' / '),
+      장소:(c.sessions||[])[0]?name('rooms',c.sessions[0].room_id):'',
+      정원:c.capacity??'', 수강료:c.tuition||''
+    }));
+  } else if(kind==='students'){
+    fname='학생목록';
+    rows=DB.students.map(s=>({
+      이름:s.name, 학년:s.grade??'', 학부모연락처:s.parent_phone||'',
+      수강강좌:DB.enrollments.filter(e=>e.student_id===s.id).map(e=>(DB.courses.find(c=>c.id===e.course_id)||{}).title).filter(Boolean).join(', ')
+    }));
+  } else if(kind==='enrollments'){
+    fname='수강신청내역';
+    rows=DB.enrollments.map(e=>({
+      학생:(DB.students.find(s=>s.id===e.student_id)||{}).name||'',
+      강좌:(DB.courses.find(c=>c.id===e.course_id)||{}).title||'',
+      상태:e.status==='WAITLIST'?'대기':e.status==='ENROLLED'?'등록':e.status,
+      결제:e.payment_status==='PAID'?'완납':e.payment_status==='REFUNDED'?'환불':'미납'
+    }));
+  }
+  if(!rows.length){alert('내보낼 데이터가 없습니다.');return;}
+  const ws=XLSX.utils.json_to_sheet(rows);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,fname);
+  const today=new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb,`플래닛아카데미_${fname}_${today}.xlsx`);
+}
+
+// ════════ 시간표 PNG 저장 ════════
+async function exportTimetableImg(scale){
+  if(typeof html2canvas==='undefined'){alert('이미지 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return;}
+  const el=document.querySelector('.tt-wrap');
+  if(!el){alert('시간표를 찾을 수 없습니다.');return;}
+  const btn=document.getElementById('ttImgBtn'); const orig=btn?btn.textContent:'';
+  if(btn)btn.textContent='저장 중…';
+  try{
+    const canvas=await html2canvas(el,{scale:scale||2,backgroundColor:'#ffffff',scrollX:0,scrollY:0});
+    const who = ttFilter==null ? '전체' : ((DB.instructors.find(i=>i.id===ttFilter)||{}).name||'');
+    const today=new Date().toISOString().slice(0,10);
+    const a=document.createElement('a');
+    a.download=`플래닛아카데미_시간표_${who}_${today}.png`;
+    a.href=canvas.toDataURL('image/png');
+    a.click();
+  }catch(e){alert('이미지 저장 오류: '+e.message);}
+  if(btn)btn.textContent=orig;
+}
+
+// ════════ 어드민 로그인 + 권한 ════════
+let currentAdmin=null; // {id,name,role,instructor_id}
+async function hashPw(pw){
+  const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pw+'_flanet'));
+  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function isAdmin(){return currentAdmin && currentAdmin.role==='SUPER_ADMIN';}
+function isTeacher(){return currentAdmin && currentAdmin.role==='TEACHER';}
+
+function renderLoginGate(){
+  document.querySelector('.layout').style.display='none';
+  let g=document.getElementById('loginGate');
+  if(!g){g=document.createElement('div');g.id='loginGate';document.body.appendChild(g);}
+  g.style.cssText='position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--paper);z-index:100;padding:20px;';
+  g.innerHTML=`
+    <div style="width:100%;max-width:360px;">
+      <div style="text-align:center;margin-bottom:22px;">
+        <div style="font-size:20px;font-weight:700;">플래닛 아카데미</div>
+        <div style="font-size:13px;color:var(--ink-soft);margin-top:3px;">관리자 · 강사 로그인</div>
+      </div>
+      <div class="card">
+        <div class="field"><label>아이디</label><input id="ad_id" placeholder="아이디" autocomplete="username"></div>
+        <div class="field"><label>비밀번호</label><input id="ad_pw" type="password" placeholder="비밀번호" autocomplete="current-password" onkeydown="if(event.key==='Enter')adminLogin()"></div>
+        <button class="btn primary" style="width:100%;" onclick="adminLogin()">로그인</button>
+        ${LIVE?'':'<p class="muted" style="font-size:12px;text-align:center;margin-top:10px;color:var(--ink-soft);">샘플 모드: 아무 값이나 입력하면 관리자로 들어갑니다.</p>'}
+      </div>
+    </div>`;
+}
+async function adminLogin(){
+  const lid=document.getElementById('ad_id').value.trim();
+  const pw=document.getElementById('ad_pw').value;
+  if(!lid||!pw){alert('아이디와 비밀번호를 입력해 주세요.');return;}
+  if(LIVE){
+    const ph=await hashPw(pw);
+    const res=await sb.from('admin_users').select('*, admin_roles(code)').eq('login_id',lid).eq('password_hash',ph);
+    if(!res.data||!res.data.length){alert('아이디 또는 비밀번호가 올바르지 않습니다.');return;}
+    const u=res.data[0];
+    currentAdmin={id:u.id,name:u.name,role:u.admin_roles?u.admin_roles.code:'TEACHER',instructor_id:u.instructor_id};
+  } else {
+    currentAdmin={id:1,name:'관리자(샘플)',role:'SUPER_ADMIN',instructor_id:null};
+  }
+  startApp();
+}
+function adminLogout(){currentAdmin=null;location.reload();}
+
+function startApp(){
+  const g=document.getElementById('loginGate'); if(g)g.remove();
+  document.querySelector('.layout').style.display='flex';
+  // 강사면 본인 강의로 시간표 필터 고정 + 메뉴 제한
+  if(isTeacher()){
+    ttFilter=currentAdmin.instructor_id;
+    // 강사가 못 보는 메뉴 숨김 (학생/기초자료/백업)
+    document.querySelectorAll('.navbtn').forEach(b=>{
+      if(['students','master','accounts'].includes(b.dataset.view)) b.style.display='none';
+      if(b.id==='backupBtn') b.style.display='none';
+    });
+  }
+  // 연결 상태 표시에 로그인 정보 추가
+  const txt=document.getElementById('connTxt');
+  if(txt) txt.textContent=(currentAdmin.name)+' · '+(isAdmin()?'관리자':'강사');
+  view='timetable';
+  render();
+}
+
+// ════════ 시작 ════════
+(async function init(){
+  const dot=document.getElementById('connDot'),txt=document.getElementById('connTxt');
+  if(LIVE){
+    try{await loadAll();dot.classList.add('on');txt.textContent='Supabase 연결됨';}
+    catch(e){LIVE=false;txt.textContent='연결 실패 · 샘플';}
+  }
+  renderLoginGate(); // 로그인 먼저
+})();
+</script>
+</body>
+</html>
