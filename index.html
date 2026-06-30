@@ -896,17 +896,24 @@ async function del(table,id){
 async function loadAll(){
   if(!LIVE)return;
   const t=['semesters','subjects','instructors','rooms','target_groups','courses','students','enrollments','schools','school_events'];
-  for(const tb of t){const{data,error}=await sb.from(tb).select('*');if(!error&&data)DB[tb]=data;}
-  // 강좌의 세션·강사 연결 로드
-  const cs=await sb.from('course_sessions').select('*');
-  const ci=await sb.from('course_instructors').select('*');
-  if(cs.data&&ci.data){
-    DB.courses.forEach(c=>{
-      c.sessions=cs.data.filter(s=>s.course_id===c.id);
-      const link=ci.data.find(x=>x.course_id===c.id);
-      c.instructor_id=link?link.instructor_id:null;
-    });
+  for(const tb of t){
+    try{
+      const{data,error}=await sb.from(tb).select('*');
+      if(!error&&data)DB[tb]=data;
+    }catch(err){ console.warn('테이블 로드 건너뜀:',tb,err); }
   }
+  // 강좌의 세션·강사 연결 로드
+  try{
+    const cs=await sb.from('course_sessions').select('*');
+    const ci=await sb.from('course_instructors').select('*');
+    if(cs.data&&ci.data){
+      DB.courses.forEach(c=>{
+        c.sessions=cs.data.filter(s=>s.course_id===c.id);
+        const link=ci.data.find(x=>x.course_id===c.id);
+        c.instructor_id=link?link.instructor_id:null;
+      });
+    }
+  }catch(err){ console.warn('세션 로드 건너뜀:',err); }
 }
 
 // ════════ 구글 시트 백업 ════════
@@ -1045,9 +1052,15 @@ async function adminLogin(){
   } else {
     currentAdmin={id:1,name:'관리자(샘플)',role:'SUPER_ADMIN',instructor_id:null};
   }
+  // 이 브라우저에 로그인 유지 (탭 닫으면 자동 해제)
+  try{ sessionStorage.setItem('flanet_admin', JSON.stringify(currentAdmin)); }catch(e){}
   startApp();
 }
-function adminLogout(){currentAdmin=null;location.reload();}
+function adminLogout(){
+  currentAdmin=null;
+  try{ sessionStorage.removeItem('flanet_admin'); }catch(e){}
+  location.reload();
+}
 
 function startApp(){
   const g=document.getElementById('loginGate'); if(g)g.remove();
@@ -1077,7 +1090,11 @@ function startApp(){
     try{await loadAll();dot.classList.add('on');txt.textContent='Supabase 연결됨';}
     catch(e){LIVE=false;txt.textContent='연결 실패 · 샘플';}
   }
-  renderLoginGate(); // 로그인 먼저
+  // 저장된 로그인 복원 (이 브라우저에서 이미 로그인했으면 유지)
+  let saved=null;
+  try{ saved=JSON.parse(sessionStorage.getItem('flanet_admin')||'null'); }catch(e){}
+  if(saved){ currentAdmin=saved; startApp(); }
+  else { renderLoginGate(); } // 로그인 먼저
 })();
 </script>
 </body>
