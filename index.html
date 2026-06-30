@@ -140,7 +140,8 @@
 <div class="layout">
   <aside class="side">
     <div class="brand">플래닛 아카데미<small>수업관리 어드민</small></div>
-    <button class="navbtn active" data-view="timetable"><span class="ic">▦</span><span>주간 시간표</span></button>
+    <button class="navbtn active" data-view="search"><span class="ic">🔍</span><span>통합검색</span></button>
+    <button class="navbtn" data-view="timetable"><span class="ic">▦</span><span>주간 시간표</span></button>
     <button class="navbtn" data-view="courses"><span class="ic">▤</span><span>강좌 관리</span></button>
     <button class="navbtn" data-view="students"><span class="ic">☺</span><span>학생·수강신청</span></button>
     <button class="navbtn" data-view="master"><span class="ic">⚙</span><span>기초자료</span></button>
@@ -240,7 +241,7 @@ function setView(v){view=v;
   render();}
 document.querySelectorAll('.navbtn').forEach(b=>b.onclick=()=>setView(b.dataset.view));
 
-function render(){({timetable:renderTimetable,courses:renderCourses,students:renderStudents,master:renderMaster,accounts:renderAccounts}[view])();}
+function render(){({search:renderSearch,timetable:renderTimetable,courses:renderCourses,students:renderStudents,master:renderMaster,accounts:renderAccounts}[view])();}
 
 function head(title,sub,btn){
   return `<div class="head"><div><h1>${title}</h1><div class="sub">${sub}</div></div>${btn||''}</div>`;
@@ -251,6 +252,96 @@ function connBanner(){
 
 // ── 시간표 ──
 let ttFilter=null; // null=전체, 숫자=특정 강사 id
+// ════════ 통합검색 ════════
+// 현재 진행 중인 세션인지 판정 (요일+시각 대조)
+function nowTeaching(c){
+  const now=new Date();
+  const wd=now.getDay()===0?7:now.getDay(); // JS:일=0 → 우리체계 일=7
+  const cur=now.getHours()*60+now.getMinutes();
+  const m=t=>{let[h,mn]=(t||'0:0').split(':');return +h*60+ +mn;};
+  for(const s of (c.sessions||[])){
+    if(s.weekday===wd && m(s.start_time)<=cur && cur<m(s.end_time)) return s;
+  }
+  return null;
+}
+function renderSearch(){
+  main.innerHTML=head('통합검색','학생·강사·강좌 이름으로 검색하세요. 강사는 지금 수업 중인지도 표시됩니다.')+`
+    <div class="card" style="padding:14px;margin-bottom:18px;">
+      <input id="searchInput" placeholder="이름을 입력하세요 (학생/강사/강좌)" autocomplete="off"
+        style="width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:9px;font-size:14.5px;"
+        oninput="doSearch(this.value)">
+    </div>
+    <div id="searchResults"><div class="empty" style="color:var(--ink-soft);">검색어를 입력하면 결과가 나타납니다.</div></div>`;
+  setTimeout(()=>{const el=document.getElementById('searchInput');if(el)el.focus();},50);
+}
+function doSearch(q){
+  q=(q||'').trim();
+  const box=document.getElementById('searchResults');
+  if(!box)return;
+  if(q.length<1){box.innerHTML='<div class="empty" style="color:var(--ink-soft);">검색어를 입력하면 결과가 나타납니다.</div>';return;}
+  const ql=q.toLowerCase();
+  let html='';
+
+  // ── 강사 검색 ──
+  const insts=DB.instructors.filter(i=>(i.name||'').toLowerCase().includes(ql));
+  if(insts.length){
+    html+='<div style="font-weight:700;font-size:13px;margin:6px 0 8px;color:var(--ink-soft);">강사</div>';
+    insts.forEach(i=>{
+      const myCourses=DB.courses.filter(c=>c.instructor_id===i.id);
+      const teachingNow=myCourses.map(c=>({c,s:nowTeaching(c)})).find(x=>x.s);
+      const status=teachingNow
+        ? `<span style="background:#dcefe7;color:#1f6b54;padding:2px 9px;border-radius:20px;font-size:11.5px;font-weight:600;">● 수업 중 · ${name('subjects',teachingNow.c.subject_id)} (${name('rooms',teachingNow.s.room_id)})</span>`
+        : `<span style="background:var(--line-soft);color:var(--ink-soft);padding:2px 9px;border-radius:20px;font-size:11.5px;">수업 없음</span>`;
+      const courseList=myCourses.map(c=>{
+        const when=(c.sessions||[]).map(s=>`${WD[s.weekday]} ${hhmm(s.start_time)}~${hhmm(s.end_time)}`).join(', ');
+        return `<div class="cmeta" style="font-size:12.5px;">· ${c.title} <span class="muted">(${when||'시간 미정'})</span></div>`;
+      }).join('')||'<div class="muted" style="font-size:12.5px;">담당 강좌 없음</div>';
+      html+=`<div class="card" style="padding:13px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <b style="font-size:15px;">${i.name}</b>${status}</div>
+        ${courseList}</div>`;
+    });
+  }
+
+  // ── 학생 검색 ──
+  const studs=DB.students.filter(s=>(s.name||'').toLowerCase().includes(ql));
+  if(studs.length){
+    html+='<div style="font-weight:700;font-size:13px;margin:14px 0 8px;color:var(--ink-soft);">학생</div>';
+    studs.forEach(s=>{
+      const myEnr=DB.enrollments.filter(e=>e.student_id===s.id);
+      const courseList=myEnr.map(e=>{
+        const c=DB.courses.find(x=>x.id===e.course_id); if(!c)return'';
+        const when=(c.sessions||[]).map(x=>`${WD[x.weekday]} ${hhmm(x.start_time)}~${hhmm(x.end_time)}`).join(', ');
+        const st=e.status==='WAITLIST'?' <span style="color:var(--full-ink);">[대기]</span>':'';
+        const pay=e.payment_status==='PAID'?'완납':e.payment_status==='REFUNDED'?'환불':'미납';
+        return `<div class="cmeta" style="font-size:12.5px;">· <b>${c.title}</b> — ${name('instructors',c.instructor_id)} 강사 · ${when}${st} <span class="muted">· ${pay}</span></div>`;
+      }).filter(Boolean).join('')||'<div class="muted" style="font-size:12.5px;">신청한 강좌 없음</div>';
+      html+=`<div class="card" style="padding:13px;margin-bottom:10px;">
+        <div style="margin-bottom:6px;"><b style="font-size:15px;">${s.name}</b>
+          <span class="muted" style="font-size:12.5px;margin-left:6px;">${s.grade!=null?gradeText(s.grade):''} ${s.parent_phone?'· '+s.parent_phone:''}</span></div>
+        ${courseList}</div>`;
+    });
+  }
+
+  // ── 강좌 검색 ──
+  const crs=DB.courses.filter(c=>(c.title||'').toLowerCase().includes(ql));
+  if(crs.length){
+    html+='<div style="font-weight:700;font-size:13px;margin:14px 0 8px;color:var(--ink-soft);">강좌</div>';
+    crs.forEach(c=>{
+      const enrolled=DB.enrollments.filter(e=>e.course_id===c.id&&e.status==='ENROLLED').length;
+      const when=(c.sessions||[]).map(s=>`${WD[s.weekday]} ${hhmm(s.start_time)}~${hhmm(s.end_time)}`).join(', ');
+      const live=nowTeaching(c)?' <span style="background:#dcefe7;color:#1f6b54;padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600;">진행 중</span>':'';
+      html+=`<div class="card" style="padding:13px;margin-bottom:10px;">
+        <div style="margin-bottom:4px;"><b style="font-size:15px;">${c.title}</b>${live}</div>
+        <div class="cmeta" style="font-size:12.5px;">${name('subjects',c.subject_id)} · ${name('instructors',c.instructor_id)} 강사 · ${when}</div>
+        <div class="cmeta" style="font-size:12.5px;">등록 ${enrolled}명${c.capacity?(' / 정원 '+c.capacity):''}</div></div>`;
+    });
+  }
+
+  box.innerHTML=html||'<div class="empty" style="color:var(--ink-soft);">검색 결과가 없습니다.</div>';
+}
+function gradeText(g){return g===0?'7세':g<=6?('초'+g):g<=9?('중'+(g-6)):g<=12?('고'+(g-9)):'성인';}
+
 function renderTimetable(){
   const flat=conflicts().filter(f=> ttFilter==null ? true : f.course.instructor_id===ttFilter);
   let rows='';
@@ -837,7 +928,9 @@ function startApp(){
   // 연결 상태 표시에 로그인 정보 추가
   const txt=document.getElementById('connTxt');
   if(txt) txt.textContent=(currentAdmin.name)+' · '+(isAdmin()?'관리자':'강사');
-  view='timetable';
+  view=isTeacher()?'timetable':'search';
+  // 첫 화면 active 표시 동기화
+  document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
   render();
 }
 
