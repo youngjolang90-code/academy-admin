@@ -658,7 +658,7 @@ function dayDetail(ds){
     const sc=DB.schools.find(s=>s.id===e.school_id);
     const range=e.end_date&&e.end_date!==e.start_date?`${e.start_date} ~ ${e.end_date}`:e.start_date;
     return `<div style="padding:9px 0;border-bottom:1px solid var(--line-soft);">
-      <div><span class="tag" style="background:${EVENT_COLOR[e.type]}22;color:${EVENT_COLOR[e.type]};">${EVENT_TYPE[e.type]}</span> <b>${e.title}</b></div>
+      <div><span class="tag" style="background:${(EVENT_COLOR[e.type]||'#777')}22;color:${EVENT_COLOR[e.type]||'#777'};">${EVENT_TYPE[e.type]||e.type}</span> <b>${e.title}</b></div>
       <div class="muted" style="font-size:12px;">${sc?sc.name+' · ':''}${range}</div>
       ${isAdmin()?`<button class="btn sm ghost" style="margin-top:4px;" onclick="delEvent(${e.id})">삭제</button>`:''}
     </div>`;
@@ -669,15 +669,23 @@ function dayDetail(ds){
 }
 function eventForm(id,presetDate){
   const e=id?(DB.school_events.find(x=>x.id===id)||{}):{start_date:presetDate||''};
+  const curSchool=e.school_id?((DB.schools.find(s=>s.id===e.school_id)||{}).name||''):'';
+  const schoolOpts=(DB.schools||[]).map(s=>`<option value="${(s.name||'').replace(/"/g,'&quot;')}">`).join('');
+  // 기존에 쓰인 커스텀 태그(구분)들도 목록에 모음
+  const usedTags=[...new Set((DB.school_events||[]).map(x=>x.type).filter(t=>!EVENT_TYPE[t]))];
+  const baseTags=Object.keys(EVENT_TYPE); // EXAM,VACATION,SEMESTER_START,EVENT
   openModal('학사일정 추가',`
-    <div class="field"><label>학교</label>
-      <select id="ev_school"><option value="">전체 공통</option>
-        ${DB.schools.map(s=>`<option value="${s.id}" ${s.id===e.school_id?'selected':''}>${s.name}</option>`).join('')}
-      </select></div>
-    <div class="field"><label>구분</label>
-      <select id="ev_type">
-        ${Object.keys(EVENT_TYPE).map(k=>`<option value="${k}" ${k===e.type?'selected':''}>${EVENT_TYPE[k]}</option>`).join('')}
-      </select></div>
+    <div class="field"><label>학교 · 목록에서 고르거나 직접 입력</label>
+      <input id="ev_school" list="ev_school_list" value="${curSchool.replace(/"/g,'&quot;')}" placeholder="전체 공통이면 비워두세요" autocomplete="off">
+      <datalist id="ev_school_list">${schoolOpts}</datalist></div>
+    <div class="field"><label>구분(태그)</label>
+      <select id="ev_type" onchange="document.getElementById('ev_type_custom').style.display=this.value==='__custom__'?'block':'none'">
+        ${baseTags.map(k=>`<option value="${k}" ${k===e.type?'selected':''}>${EVENT_TYPE[k]}</option>`).join('')}
+        ${usedTags.map(t=>`<option value="${t}" ${t===e.type?'selected':''}>${t}</option>`).join('')}
+        <option value="__custom__">+ 새 태그 직접 입력…</option>
+      </select>
+      <input id="ev_type_custom" placeholder="새 태그 이름 (예: 소풍, 학부모총회)" style="display:none;margin-top:6px;width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13.5px;">
+    </div>
     <div class="field"><label>제목</label><input id="ev_title" value="${(e.title||'').replace(/"/g,'&quot;')}" placeholder="예: 1학기 기말고사"></div>
     <div class="grid2">
       <div class="field"><label>시작일</label><input id="ev_start" type="date" value="${e.start_date||''}"></div>
@@ -686,9 +694,32 @@ function eventForm(id,presetDate){
     async()=>{
       if(!val('ev_title')){alert('제목을 입력해 주세요.');return;}
       if(!val('ev_start')){alert('시작일을 선택해 주세요.');return;}
+      // 학교: 입력값으로 기존 찾거나 새로 생성
+      let school_id=null;
+      const schoolName=val('ev_school').trim();
+      if(schoolName){
+        const found=(DB.schools||[]).find(s=>(s.name||'').trim()===schoolName);
+        if(found) school_id=found.id;
+        else {
+          if(LIVE){
+            const r=await sb.from('schools').insert({name:schoolName}).select();
+            if(r.error){alert('학교 추가 오류: '+r.error.message);return;}
+            DB.schools.push(r.data[0]); school_id=r.data[0].id;
+          } else {
+            const nid=Math.max(0,...DB.schools.map(x=>x.id))+1;
+            DB.schools.push({id:nid,name:schoolName,color:'#2f6f5b'}); school_id=nid;
+          }
+        }
+      }
+      // 구분(태그): 커스텀 선택 시 입력값 사용
+      let type=val('ev_type');
+      if(type==='__custom__'){
+        const ct=document.getElementById('ev_type_custom').value.trim();
+        if(!ct){alert('새 태그 이름을 입력해 주세요.');return;}
+        type=ct;
+      }
       const obj={
-        school_id:val('ev_school')?+val('ev_school'):null,
-        type:val('ev_type'), title:val('ev_title'),
+        school_id, type, title:val('ev_title'),
         start_date:val('ev_start'), end_date:val('ev_end')||null
       };
       if(LIVE){
