@@ -131,16 +131,29 @@
   .empty{padding:40px;text-align:center;color:var(--ink-soft);}
   .banner{background:#fff7e6;border:1px solid #f0d9a8;color:#7a5310;padding:10px 14px;
     border-radius:8px;font-size:12.5px;margin-bottom:18px;}
+  /* 모바일 상단 헤더 + 서랍 (기본 숨김, 모바일에서만 표시) */
+  .mobile-header{display:none;}
+  .drawer-backdrop{display:none;}
   @media(max-width:680px){
+    .mobile-header{display:flex;align-items:center;gap:12px;position:fixed;top:0;left:0;right:0;
+      height:52px;background:var(--card);border-bottom:1px solid var(--line);z-index:60;padding:0 14px;}
+    .hamburger{border:none;background:none;font-size:22px;cursor:pointer;color:var(--ink);padding:4px 6px;line-height:1;}
+    .mh-title{font-weight:700;font-size:15px;}
+    .drawer-backdrop{position:fixed;inset:0;background:rgba(20,28,24,.4);z-index:70;
+      opacity:0;pointer-events:none;transition:opacity .2s;}
+    .drawer-backdrop.open{display:block;opacity:1;pointer-events:auto;}
     .layout{flex-direction:column;}
-    .side{width:100%;flex-direction:row;border-right:none;border-top:1px solid var(--line);
-      padding:6px 4px;gap:2px;position:fixed;bottom:0;left:0;right:0;background:var(--card);z-index:40;
-      box-shadow:0 -2px 8px rgba(0,0,0,.04);}
-    .brand,.conn{display:none;}
-    .navbtn{flex-direction:column;gap:3px;padding:7px 4px;font-size:10.5px;flex:1;text-align:center;border-radius:8px;}
-    .navbtn .ic{font-size:17px;}
-    #backupBtn{margin-top:0;}
-    .main{padding:16px 13px 78px;}
+    .side{position:fixed;top:0;left:0;bottom:0;width:250px;flex-direction:column;
+      border-right:1px solid var(--line);border-top:none;padding:18px 12px;gap:3px;
+      background:var(--card);z-index:80;transform:translateX(-100%);transition:transform .25s ease;
+      box-shadow:2px 0 12px rgba(0,0,0,.08);overflow-y:auto;}
+    .side.open{transform:translateX(0);}
+    .brand{display:block;}
+    .conn{display:block;}
+    .navbtn{flex-direction:row;gap:9px;padding:11px 12px;font-size:14px;text-align:left;border-radius:8px;}
+    .navbtn .ic{font-size:17px;width:20px;}
+    #backupBtn{margin-top:8px;}
+    .main{padding:68px 14px 24px;}
     h1{font-size:17px;}
     .head{margin-bottom:14px;}
     .modal{max-width:100%;padding:18px 16px;border-radius:14px 14px 0 0;align-self:flex-end;}
@@ -152,8 +165,13 @@
 </style>
 </head>
 <body>
+<div class="mobile-header" id="mobileHeader">
+  <button class="hamburger" onclick="toggleDrawer()" aria-label="메뉴 열기">☰</button>
+  <div class="mh-title" id="mhTitle">플래닛 아카데미</div>
+</div>
+<div class="drawer-backdrop" id="drawerBackdrop" onclick="closeDrawer()"></div>
 <div class="layout">
-  <aside class="side">
+  <aside class="side" id="sideNav">
     <div class="brand">플래닛 아카데미<small>수업관리 어드민</small></div>
     <button class="navbtn active" data-view="search"><span class="ic">🔍</span><span>통합검색</span></button>
     <button class="navbtn" data-view="timetable"><span class="ic">▦</span><span>주간 시간표</span></button>
@@ -260,10 +278,22 @@ function conflicts(){
 const main=document.getElementById('main');
 let view='timetable';
 
+const TAB_TITLES={search:'통합검색',timetable:'주간 시간표',courses:'강좌 관리',students:'학생·수강신청',master:'기초자료',calendar:'학사 캘린더',accounts:'계정관리'};
 function setView(v){view=v;
   document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
+  const mh=document.getElementById('mhTitle'); if(mh&&TAB_TITLES[v])mh.textContent=TAB_TITLES[v];
+  closeDrawer();
   render();}
 document.querySelectorAll('.navbtn').forEach(b=>b.onclick=()=>setView(b.dataset.view));
+// 서랍 열고닫기
+function toggleDrawer(){
+  const s=document.getElementById('sideNav'), b=document.getElementById('drawerBackdrop');
+  const open=s.classList.toggle('open'); b.classList.toggle('open',open);
+}
+function closeDrawer(){
+  const s=document.getElementById('sideNav'), b=document.getElementById('drawerBackdrop');
+  if(s)s.classList.remove('open'); if(b)b.classList.remove('open');
+}
 
 function render(){({search:renderSearch,timetable:renderTimetable,courses:renderCourses,students:renderStudents,master:renderMaster,accounts:renderAccounts,calendar:renderCalendar}[view])();}
 
@@ -949,6 +979,7 @@ async function loadAll(){
 
 // ════════ 구글 시트 백업 ════════
 async function backupToSheet(){
+  closeDrawer();
   const btn=document.getElementById('backupBtn');
   if(!SHEET_WEBHOOK_URL.startsWith('http')){
     alert('아직 백업 주소가 설정되지 않았습니다.\n\n파일 상단의 SHEET_WEBHOOK_URL에 구글 Apps Script 웹앱 URL을 넣어주세요.\n(설정 방법: 구글시트_백업_설정가이드 참고)');
@@ -1092,7 +1123,6 @@ function adminLogout(){
   try{ sessionStorage.removeItem('flanet_admin'); }catch(e){}
   location.reload();
 }
-
 function startApp(){
   const g=document.getElementById('loginGate'); if(g)g.remove();
   document.querySelector('.layout').style.display='flex';
