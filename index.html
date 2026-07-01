@@ -251,7 +251,9 @@ let DB = {
   students:[
     {id:1,name:'김하准',grade:2,parent_phone:'010-1234-5678'},
     {id:2,name:'이도윤',grade:5,parent_phone:'010-2222-3333'}],
-  enrollments:[{id:1,student_id:1,course_id:2,status:'ENROLLED',payment_status:'PAID'}]
+  enrollments:[
+    {id:1,student_id:1,course_id:2,status:'ENROLLED',payment_status:'PAID'},
+    {id:2,student_id:1,course_id:1,status:'ENROLLED',payment_status:'UNPAID'}]
 };
 
 const name = (arr,id) => (DB[arr].find(x=>x.id===id)||{}).name || (DB[arr].find(x=>x.id===id)||{}).label || '-';
@@ -600,7 +602,7 @@ function renderStudents(){
     const list=enr.map(e=>{const c=DB.courses.find(x=>x.id===e.course_id);return c?c.title:'';}).filter(Boolean).join(', ')||'<span class="muted">없음</span>';
     return `<tr>
       <td><b>${s.name}</b></td>
-      <td class="muted">${s.grade?'초'+s.grade:'-'}</td>
+      <td class="muted">${s.grade!=null?gradeText(s.grade):'-'}</td>
       <td class="muted">${s.parent_phone||'-'}</td>
       <td>${list}</td>
       <td><div class="row-actions">
@@ -610,14 +612,56 @@ function renderStudents(){
   }).join('');
   const enrolled=c=>DB.enrollments.filter(e=>e.course_id===c.id&&e.status==='ENROLLED').length;
   const counts=DB.courses.map(c=>`<tr><td><b>${c.title}</b></td><td>${name('subjects',c.subject_id)}</td><td>${enrolled(c)}명</td></tr>`).join('');
+
+  // 결제 관리: 모든 수강신청을 학생·강좌·상태·결제로 나열
+  const PAY_LABEL={PAID:'완납',UNPAID:'미납',REFUNDED:'환불'};
+  const PAY_COLOR={PAID:'#1f6b54',UNPAID:'#a32d2d',REFUNDED:'#7a6a3a'};
+  const unpaidCount=DB.enrollments.filter(e=>e.payment_status==='UNPAID'||!e.payment_status).length;
+  const payRows=DB.enrollments.map(e=>{
+    const st=DB.students.find(x=>x.id===e.student_id);
+    const c=DB.courses.find(x=>x.id===e.course_id);
+    if(!st||!c)return'';
+    const pay=e.payment_status||'UNPAID';
+    const waitTag=e.status==='WAITLIST'?' <span class="tag full" style="font-size:10px;">대기</span>':'';
+    return `<tr>
+      <td><b>${st.name}</b> <span class="muted" style="font-size:11px;">${st.grade!=null?gradeText(st.grade):''}</span></td>
+      <td>${c.title}${waitTag}</td>
+      <td>${c.tuition?c.tuition.toLocaleString()+'원':'-'}</td>
+      <td><span style="font-weight:600;color:${PAY_COLOR[pay]};">${PAY_LABEL[pay]}</span></td>
+      <td><div class="row-actions">
+        ${pay!=='PAID'?`<button class="btn sm" onclick="setPay(${e.id},'PAID')">완납 처리</button>`:''}
+        ${pay!=='UNPAID'?`<button class="btn sm ghost" onclick="setPay(${e.id},'UNPAID')">미납으로</button>`:''}
+        ${pay!=='REFUNDED'?`<button class="btn sm ghost" onclick="setPay(${e.id},'REFUNDED')">환불</button>`:''}
+      </div></td></tr>`;
+  }).filter(Boolean).join('');
+
   main.innerHTML=head('학생 · 수강신청',`총 ${DB.students.length}명`,
     `<button class="btn sm" onclick="exportExcel('students')" style="margin-right:6px;">학생 엑셀</button><button class="btn sm" onclick="exportExcel('enrollments')" style="margin-right:6px;">신청 엑셀</button><button class="btn primary" onclick="studentForm()">+ 학생 추가</button>`)+connBanner()+`
     <div class="card" style="margin-bottom:22px;"><table><thead><tr>
       <th>이름</th><th>학년</th><th>학부모 연락처</th><th>수강 강좌</th><th></th>
     </tr></thead><tbody>${rows||'<tr><td colspan="5" class="empty">학생이 없습니다.</td></tr>'}</tbody></table></div>
+
+    <h1 style="font-size:15px;margin:0 0 4px;">💳 수강료 납부 관리</h1>
+    <p class="muted" style="font-size:12.5px;margin:0 0 10px;">미납 ${unpaidCount}건 · 버튼으로 완납/미납/환불을 바로 처리할 수 있어요.</p>
+    <div class="card" style="margin-bottom:22px;"><table><thead><tr>
+      <th>학생</th><th>강좌</th><th>수강료</th><th>납부</th><th></th>
+    </tr></thead><tbody>${payRows||'<tr><td colspan="5" class="empty">수강신청 내역이 없습니다.</td></tr>'}</tbody></table></div>
+
     <h1 style="font-size:15px;margin:0 0 10px;">강좌별 등록 인원</h1>
     <div class="card"><table><thead><tr><th>강좌</th><th>과목</th><th>등록</th></tr></thead><tbody>${counts}</tbody></table></div>`;
 }
+// 결제 상태 변경
+async function setPay(enrollId,status){
+  if(LIVE){
+    const{error}=await sb.from('enrollments').update({payment_status:status}).eq('id',enrollId);
+    if(error){alert('변경 오류: '+error.message);return;}
+    await loadAll();
+  } else {
+    const e=DB.enrollments.find(x=>x.id===enrollId); if(e)e.payment_status=status;
+  }
+  renderStudents();
+}
+// 결제 상태 변경 끝
 function studentForm(id){
   const s=id?DB.students.find(x=>x.id===id):{};
   openModal(id?'학생 수정':'학생 추가',`
@@ -823,12 +867,13 @@ async function resetStudentPw(){
   const nm2=document.getElementById('resetName').value.trim();
   if(!nm2){alert('학생 이름을 입력해 주세요.');return;}
   if(!LIVE){alert('샘플 모드에서는 동작하지 않습니다.');return;}
-  const r=await sb.from('students').select('id,name,login_id').eq('name',nm2);
-  if(!r.data||!r.data.length){alert('해당 이름의 학생을 찾을 수 없습니다.');return;}
-  if(r.data.length>1 && !confirm(`'${nm2}' 학생이 ${r.data.length}명 있습니다. 모두 초기화할까요?`))return;
+  // 이미 admin_students RPC로 로드된 목록에서 찾음 (직접 읽기 안 함)
+  const matches=DB.students.filter(s=>s.name===nm2);
+  if(!matches.length){alert('해당 이름의 학생을 찾을 수 없습니다.');return;}
+  if(matches.length>1 && !confirm(`'${nm2}' 학생이 ${matches.length}명 있습니다. 모두 초기화할까요?`))return;
   const temp='0000';
   const ph=await hashPw(temp);
-  for(const s of r.data){ await sb.from('students').update({password_hash:ph}).eq('id',s.id); }
+  for(const s of matches){ await sb.from('students').update({password_hash:ph}).eq('id',s.id); }
   alert(`초기화 완료.\n임시 비밀번호: ${temp}\n학생에게 알려주고 로그인 후 변경하도록 안내해 주세요.`);
 }
 async function resetAdminPw(id,nm2){
@@ -961,13 +1006,22 @@ async function del(table,id){
 // ════════ Supabase 데이터 로드 ════════
 async function loadAll(){
   if(!LIVE)return;
-  const t=['semesters','subjects','instructors','rooms','target_groups','courses','students','enrollments','schools','school_events'];
+  const t=['semesters','subjects','instructors','rooms','target_groups','courses','enrollments','schools','school_events'];
   for(const tb of t){
     try{
       const{data,error}=await sb.from(tb).select('*');
       if(!error&&data)DB[tb]=data;
     }catch(err){ console.warn('테이블 로드 건너뜀:',tb,err); }
   }
+  // 학생: RLS로 직접 읽기가 막혀 있으므로 관리자용 RPC로 조회 (연락처 포함)
+  try{
+    const r=await sb.rpc('admin_students');
+    if(!r.error&&r.data)DB.students=r.data;
+    else { // RPC 없거나 실패 시 폴백(구버전 호환)
+      const d=await sb.from('students').select('*');
+      if(!d.error&&d.data)DB.students=d.data;
+    }
+  }catch(err){ console.warn('학생 로드 건너뜀:',err); }
   // 강좌의 세션·강사 연결 로드
   try{
     const cs=await sb.from('course_sessions').select('*');
