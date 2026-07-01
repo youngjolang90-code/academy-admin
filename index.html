@@ -323,10 +323,15 @@ function renderSearch(){
     <div class="card" style="padding:14px;margin-bottom:18px;">
       <input id="searchInput" placeholder="이름을 입력하세요 (학생/강사/강좌)" autocomplete="off"
         style="width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:9px;font-size:14.5px;"
-        oninput="doSearch(this.value)">
+        oninput="searchDebounced(this.value)">
     </div>
     <div id="searchResults"><div class="empty" style="color:var(--ink-soft);">검색어를 입력하면 결과가 나타납니다.</div></div>`;
   setTimeout(()=>{const el=document.getElementById('searchInput');if(el)el.focus();},50);
+}
+let _searchTimer=null;
+function searchDebounced(q){
+  clearTimeout(_searchTimer);
+  _searchTimer=setTimeout(()=>doSearch(q),220);
 }
 function doSearch(q){
   q=(q||'').trim();
@@ -1084,6 +1089,10 @@ function isTeacher(){return currentAdmin && currentAdmin.role==='TEACHER';}
 
 function renderLoginGate(){
   document.querySelector('.layout').style.display='none';
+  // 모바일 상단 헤더 숨김 (로그인 화면에선 불필요)
+  const mh=document.getElementById('mobileHeader'); if(mh)mh.style.display='none';
+  // 이전 강사 로그인으로 숨겨졌던 메뉴 원복
+  document.querySelectorAll('.navbtn').forEach(b=>b.style.display='');
   let g=document.getElementById('loginGate');
   if(!g){g=document.createElement('div');g.id='loginGate';document.body.appendChild(g);}
   g.style.cssText='position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--paper);z-index:100;padding:20px;';
@@ -1119,17 +1128,22 @@ async function adminLogin(){
   startApp();
 }
 function adminLogout(){
-  currentAdmin=null;
+  currentAdmin=null; ttFilter=null;
   try{ sessionStorage.removeItem('flanet_admin'); }catch(e){}
-  location.reload();
+  closeDrawer();
+  // 리로드 없이 즉시 로그인 화면으로 (데이터 재로딩 안 함)
+  renderLoginGate();
 }
 function startApp(){
   const g=document.getElementById('loginGate'); if(g)g.remove();
   document.querySelector('.layout').style.display='flex';
+  // 모바일 헤더 원복 (CSS media query가 표시 여부 결정)
+  const mh=document.getElementById('mobileHeader'); if(mh)mh.style.display='';
+  // 메뉴 표시 초기화 후 역할별 적용
+  document.querySelectorAll('.navbtn').forEach(b=>b.style.display='');
   // 강사면 본인 강의로 시간표 필터 고정 + 메뉴 제한
   if(isTeacher()){
     ttFilter=currentAdmin.instructor_id;
-    // 강사가 못 보는 메뉴 숨김 (학생/기초자료/백업)
     document.querySelectorAll('.navbtn').forEach(b=>{
       if(['students','master','accounts'].includes(b.dataset.view)) b.style.display='none';
       if(b.id==='backupBtn') b.style.display='none';
