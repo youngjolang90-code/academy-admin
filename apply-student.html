@@ -151,7 +151,7 @@ async function hashPw(pw){
 
 async function loadAll(){
   if(!LIVE)return;
-  for(const tb of ['subjects','instructors','rooms','target_groups','courses','students','enrollments']){
+  for(const tb of ['subjects','instructors','rooms','target_groups','courses','enrollments']){
     const{data,error}=await sb.from(tb).select('*'); if(!error&&data)DB[tb]=data;
   }
   const cs=await sb.from('course_sessions').select('*');
@@ -229,10 +229,12 @@ async function doSignup(){
   if(!name){alert('이름을 입력해 주세요.');return;}
   if(grade===''){alert('학년을 선택해 주세요.');return;}
   if(LIVE){
-    const dup=await sb.from('students').select('id').eq('login_id',lid);
-    if(dup.data&&dup.data.length){alert('이미 사용 중인 아이디입니다.');return;}
+    // 아이디 중복확인 (RPC — students 직접 읽기 안 함)
+    const dupChk=await sb.rpc('student_id_exists',{p_login_id:lid});
+    if(dupChk.error){alert('확인 오류: '+dupChk.error.message);return;}
+    if(dupChk.data===true){alert('이미 사용 중인 아이디입니다.');return;}
     const ph=await hashPw(pw);
-    const ins=await sb.from('students').insert({name,grade:+grade,parent_phone:phone||null,login_id:lid,password_hash:ph}).select();
+    const ins=await sb.from('students').insert({name,grade:+grade,parent_phone:phone||null,login_id:lid,password_hash:ph}).select('id,name,grade');
     if(ins.error){alert('회원가입 오류: '+ins.error.message);return;}
     me={id:ins.data[0].id,name,grade:+grade};
     await loadAll();
@@ -245,7 +247,9 @@ async function doLogin(){
   if(!lid||!pw){alert('아이디와 비밀번호를 입력해 주세요.');return;}
   if(LIVE){
     const ph=await hashPw(pw);
-    const res=await sb.from('students').select('*').eq('login_id',lid).eq('password_hash',ph);
+    // RPC로 로그인 검증 — 연락처·비번해시는 브라우저로 안 나옴
+    const res=await sb.rpc('student_login',{p_login_id:lid,p_pw_hash:ph});
+    if(res.error){alert('로그인 오류: '+res.error.message);return;}
     if(!res.data||!res.data.length){alert('아이디 또는 비밀번호가 올바르지 않습니다.');return;}
     const s=res.data[0];
     me={id:s.id,name:s.name,grade:s.grade};
