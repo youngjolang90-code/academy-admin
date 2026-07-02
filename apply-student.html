@@ -90,6 +90,9 @@
   .db-alert{padding:11px 14px;border-radius:9px;font-size:13px;margin-bottom:10px;}
   .db-alert.warn{background:var(--full-bg);color:var(--full-ink);}
   .db-alert.pay{background:#fde8e8;color:#8a2020;}
+  .db-cancel{border:1px solid var(--line);background:#fff;color:#a32d2d;border-radius:7px;
+    padding:6px 11px;font-size:12px;cursor:pointer;white-space:nowrap;}
+  .db-cancel:hover{background:#fdf0f0;border-color:#e0b4b4;}
 </style>
 </head>
 <body>
@@ -266,6 +269,21 @@ async function doLogin(){
   selected=new Set(); renderDashboard();
 }
 function logout(){me=null;selected=new Set();renderLogin();}
+// 신청 취소 (확정 전에만 가능)
+async function cancelEnroll(enrollId,title){
+  const en=DB.enrollments.find(e=>e.id===enrollId);
+  if(en&&en.confirmed===true){alert('이미 확정된 신청은 취소할 수 없습니다.\n학원에 문의해 주세요.');return;}
+  if(!confirm(`'${title}' 신청을 취소할까요?`))return;
+  if(LIVE){
+    // 확정된 건은 서버에서도 못 지우게 confirmed=false 조건
+    const{error,count}=await sb.from('enrollments').delete({count:'exact'}).eq('id',enrollId).eq('confirmed',false);
+    if(error){alert('취소 오류: '+error.message);return;}
+    await loadAll();
+  } else {
+    DB.enrollments=DB.enrollments.filter(e=>e.id!==enrollId);
+  }
+  renderDashboard();
+}
 
 // ════════ 학생 대시보드 (로그인 후 첫 화면) ════════
 function myEnrollments(){
@@ -314,8 +332,14 @@ function renderDashboard(){
   const allHtml = mine.length ? mine.map(en=>{
     const when=(en.course.sessions||[]).map(s=>`${WD[s.weekday]} ${hhmm(s.start_time)}~${hhmm(s.end_time)}`).join(', ');
     const st=en.status==='WAITLIST'?'<span class="tag full">대기</span>':'';
-    return `<div class="db-row">
-      <div><b>${en.course.title}</b> ${st}<div class="cmeta">${nm('subjects',en.course.subject_id)} · ${nm('instructors',en.course.instructor_id)} 강사 · ${when}</div></div>
+    const confirmed=en.confirmed===true;
+    const badge=confirmed?'<span class="tag" style="background:#dcefe7;color:#1f6b54;">확정</span>':'';
+    const cancelBtn=confirmed
+      ? '<span class="muted" style="font-size:11.5px;">확정됨 · 취소는 학원 문의</span>'
+      : `<button class="db-cancel" onclick="cancelEnroll(${en.id},'${(en.course.title||'').replace(/'/g,'')}')">신청 취소</button>`;
+    return `<div class="db-row" style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+      <div style="flex:1;"><b>${en.course.title}</b> ${st}${badge}<div class="cmeta">${nm('subjects',en.course.subject_id)} · ${nm('instructors',en.course.instructor_id)} 강사 · ${when}</div></div>
+      <div>${cancelBtn}</div>
     </div>`;
   }).join('') : '<div class="muted" style="padding:6px 2px;">아직 신청한 강좌가 없습니다.</div>';
 
