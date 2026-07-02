@@ -286,7 +286,7 @@ function setView(v){view=v;
   const mh=document.getElementById('mhTitle'); if(mh&&TAB_TITLES[v])mh.textContent=TAB_TITLES[v];
   closeDrawer();
   render();}
-document.querySelectorAll('.navbtn').forEach(b=>b.onclick=()=>setView(b.dataset.view));
+document.querySelectorAll('.navbtn').forEach(b=>{ if(b.dataset.view) b.onclick=()=>setView(b.dataset.view); });
 // 서랍 열고닫기
 function toggleDrawer(){
   const s=document.getElementById('sideNav'), b=document.getElementById('drawerBackdrop');
