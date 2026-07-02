@@ -485,14 +485,65 @@ function combo(inputId,arr,curId,lbl){
     <datalist id="${listId}">${opts}</datalist>`;
 }
 // 입력한 이름으로 기존 id를 찾고, 없으면 마스터에 새로 만들어 id 반환
+// 라벨에서 학년 코드 하나를 인식 (7세=0, 초1~6=1~6, 중1~3=7~9, 고1~3=10~12, 성인=13)
+function parseGradeToken(tok){
+  tok=tok.trim();
+  if(/7\s*세|일곱\s*살/.test(tok)) return 0;
+  if(/성인|어른/.test(tok)) return 13;
+  let m=tok.match(/초\D*(\d)/); if(m) return Math.min(6,+m[1]);
+  m=tok.match(/중\D*(\d)/); if(m) return 6+Math.min(3,+m[1]);
+  m=tok.match(/고\D*(\d)/); if(m) return 9+Math.min(3,+m[1]);
+  // 학교급만 있는 경우
+  if(/초등|초\b/.test(tok)) return null; // 범위는 아래에서 처리
+  return null;
+}
+// 라벨 전체에서 grade_from/grade_to 추론. 실패하면 null 반환(=물어봐야 함)
+function parseGradeRange(label){
+  label=label.trim();
+  // "초등 전체/초등부" 같은 학교급 전체
+  if(/^초등(\s*(전체|부))?$/.test(label)) return {from:1,to:6};
+  if(/^중등(\s*(전체|부))?$/.test(label)) return {from:7,to:9};
+  if(/^고등(\s*(전체|부))?$/.test(label)) return {from:10,to:12};
+  if(/^7\s*세$/.test(label)) return {from:0,to:0};
+  if(/^성인$/.test(label)) return {from:13,to:13};
+  // "초1-초5", "고1-고3", "중2-고2", "초1-5" 같은 범위형
+  const parts=label.split(/[-~－]/).map(s=>s.trim()).filter(Boolean);
+  if(parts.length===2){
+    let a=parseGradeToken(parts[0]);
+    // "초1-5"처럼 뒤쪽에 학교급이 생략된 경우, 앞 학교급을 붙여 해석
+    let b=parseGradeToken(parts[1]);
+    if(b===null){ // 숫자만 있는 경우: 앞 토큰의 학교급 접두어 재사용
+      const prefix=(parts[0].match(/^(초|중|고)/)||[])[1]||'';
+      b=parseGradeToken(prefix+parts[1]);
+    }
+    if(a!==null && b!==null) return {from:Math.min(a,b),to:Math.max(a,b)};
+  } else if(parts.length===1){
+    const g=parseGradeToken(parts[0]);
+    if(g!==null) return {from:g,to:g};
+  }
+  return null; // 인식 실패
+}
+
 async function resolveId(arr,inputId){
   const raw=val(inputId).trim();
   if(!raw) return null;
   const found=DB[arr].find(x=>(x.name||x.label||'').trim()===raw);
   if(found) return found.id;
-  let obj = arr==='target_groups'
-    ? {label:raw, grade_from:0, grade_to:6, gender:'공용'}
-    : {name:raw};
+  let obj;
+  if(arr==='target_groups'){
+    let range=parseGradeRange(raw);
+    if(!range){
+      // 자동 인식 실패 → 학년 범위를 직접 물어봄 (잘못 저장 방지)
+      const gf=prompt(`'${raw}' 대상의 시작 학년을 숫자로 입력하세요.\n(7세=0, 초1~6=1~6, 중1~3=7~9, 고1~3=10~12, 성인=13)`);
+      if(gf===null) return null;
+      const gt=prompt('끝 학년을 숫자로 입력하세요. (하나면 시작과 같게)');
+      if(gt===null) return null;
+      range={from:+gf, to:+gt};
+    }
+    obj={label:raw, grade_from:range.from, grade_to:range.to, gender:'공용'};
+  } else {
+    obj={name:raw};
+  }
   if(LIVE){
     const res=await sb.from(arr).insert(obj).select();
     if(res.error){alert('새 '+arr+' 추가 오류: '+res.error.message);return null;}
