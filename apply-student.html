@@ -231,12 +231,20 @@ async function doSignup(){
   if(LIVE){
     // 아이디 중복확인 (RPC — students 직접 읽기 안 함)
     const dupChk=await sb.rpc('student_id_exists',{p_login_id:lid});
-    if(dupChk.error){alert('확인 오류: '+dupChk.error.message);return;}
+    if(dupChk.error){alert('확인 오류: '+dupChk.error.message+'\n(관리자: 보안 SQL이 적용됐는지 확인 필요)');return;}
     if(dupChk.data===true){alert('이미 사용 중인 아이디입니다.');return;}
     const ph=await hashPw(pw);
-    const ins=await sb.from('students').insert({name,grade:+grade,parent_phone:phone||null,login_id:lid,password_hash:ph}).select('id,name,grade');
+    // insert (RLS로 select 반환이 막히므로 결과를 돌려받지 않음)
+    const ins=await sb.from('students').insert({name,grade:+grade,parent_phone:phone||null,login_id:lid,password_hash:ph});
     if(ins.error){alert('회원가입 오류: '+ins.error.message);return;}
-    me={id:ins.data[0].id,name,grade:+grade};
+    // 방금 만든 계정으로 바로 로그인(RPC)해서 id 확보
+    const res=await sb.rpc('student_login',{p_login_id:lid,p_pw_hash:ph});
+    if(res.error||!res.data||!res.data.length){
+      alert('회원가입은 되었으나 자동 로그인에 실패했습니다.\n로그인 화면에서 방금 만든 아이디로 로그인해 주세요.');
+      authMode='login'; renderLogin(); return;
+    }
+    const s=res.data[0];
+    me={id:s.id,name:s.name,grade:s.grade};
     await loadAll();
   } else { me={id:99,name,grade:+grade}; }
   selected=new Set(); renderDashboard();
