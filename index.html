@@ -674,14 +674,23 @@ function renderStudents(){
     if(!st||!c)return'';
     const pay=e.payment_status||'UNPAID';
     const waitTag=e.status==='WAITLIST'?' <span class="tag full" style="font-size:10px;">대기</span>':'';
+    const confirmed=e.confirmed===true;
+    const confBadge=confirmed
+      ? '<span style="font-weight:600;color:#1f6b54;">확정</span>'
+      : '<span class="muted">미확정</span>';
+    const confBtn=confirmed
+      ? `<button class="btn sm ghost" onclick="setConfirm(${e.id},false)">확정 해제</button>`
+      : `<button class="btn sm" onclick="setConfirm(${e.id},true)">확정</button>`;
     return `<tr>
       <td><b>${st.name}</b> <span class="muted" style="font-size:11px;">${st.grade!=null?gradeText(st.grade):''}</span></td>
       <td>${c.title}${waitTag}</td>
       <td>${c.tuition?c.tuition.toLocaleString()+'원':'-'}</td>
       <td><span style="font-weight:600;color:${PAY_COLOR[pay]};">${PAY_LABEL[pay]}</span></td>
+      <td>${confBadge}</td>
       <td><div class="row-actions">
-        ${pay!=='PAID'?`<button class="btn sm" onclick="setPay(${e.id},'PAID')">완납 처리</button>`:''}
-        ${pay!=='UNPAID'?`<button class="btn sm ghost" onclick="setPay(${e.id},'UNPAID')">미납으로</button>`:''}
+        ${confBtn}
+        ${pay!=='PAID'?`<button class="btn sm" onclick="setPay(${e.id},'PAID')">완납</button>`:''}
+        ${pay!=='UNPAID'?`<button class="btn sm ghost" onclick="setPay(${e.id},'UNPAID')">미납</button>`:''}
         ${pay!=='REFUNDED'?`<button class="btn sm ghost" onclick="setPay(${e.id},'REFUNDED')">환불</button>`:''}
       </div></td></tr>`;
   }).filter(Boolean).join('');
@@ -695,8 +704,8 @@ function renderStudents(){
     <h1 style="font-size:15px;margin:0 0 4px;">💳 수강료 납부 관리</h1>
     <p class="muted" style="font-size:12.5px;margin:0 0 10px;">미납 ${unpaidCount}건 · 버튼으로 완납/미납/환불을 바로 처리할 수 있어요.</p>
     <div class="card" style="margin-bottom:22px;"><table><thead><tr>
-      <th>학생</th><th>강좌</th><th>수강료</th><th>납부</th><th></th>
-    </tr></thead><tbody>${payRows||'<tr><td colspan="5" class="empty">수강신청 내역이 없습니다.</td></tr>'}</tbody></table></div>
+      <th>학생</th><th>강좌</th><th>수강료</th><th>납부</th><th>확정</th><th></th>
+    </tr></thead><tbody>${payRows||'<tr><td colspan="6" class="empty">수강신청 내역이 없습니다.</td></tr>'}</tbody></table></div>
 
     <h1 style="font-size:15px;margin:0 0 10px;">강좌별 등록 인원</h1>
     <div class="card"><table><thead><tr><th>강좌</th><th>과목</th><th>등록</th></tr></thead><tbody>${counts}</tbody></table></div>`;
@@ -709,6 +718,17 @@ async function setPay(enrollId,status){
     await loadAll();
   } else {
     const e=DB.enrollments.find(x=>x.id===enrollId); if(e)e.payment_status=status;
+  }
+  renderStudents();
+}
+// 신청 확정/해제 (확정되면 학생이 취소 불가)
+async function setConfirm(enrollId,confirmed){
+  if(LIVE){
+    const{error}=await sb.from('enrollments').update({confirmed}).eq('id',enrollId);
+    if(error){alert('변경 오류: '+error.message);return;}
+    await loadAll();
+  } else {
+    const e=DB.enrollments.find(x=>x.id===enrollId); if(e)e.confirmed=confirmed;
   }
   renderStudents();
 }
@@ -872,7 +892,6 @@ async function delEvent(id){
 
 async function renderAccounts(){
   if(!isAdmin()){main.innerHTML=head('접근 불가','관리자만 사용할 수 있는 메뉴입니다.');return;}
-  // 강사 어드민 계정 목록
   let teacherAccts=[];
   if(LIVE){
     const r=await sb.from('admin_users').select('*, admin_roles(code,name)');
@@ -884,16 +903,17 @@ async function renderAccounts(){
     <td>${a.instructor_id?name('instructors',a.instructor_id):'-'}</td>
     <td><div class="row-actions">
       <button class="btn sm" onclick="resetAdminPw(${a.id},'${(a.name||'').replace(/'/g,'')}')">비번 초기화</button>
+      ${a.login_id!=='admin'?`<button class="btn sm ghost" onclick="deleteAdminAcct(${a.id},'${(a.name||'').replace(/'/g,'')}')">삭제</button>`:''}
     </div></td></tr>`).join('');
 
-  main.innerHTML=head('계정관리','학생·강사 계정의 비밀번호를 초기화하고, 강사 계정을 만들 수 있어요.')+`
+  main.innerHTML=head('계정관리','학생 이름으로 검색해 정보수정·비밀번호 초기화·삭제를 할 수 있어요.')+`
     <div class="card" style="margin-bottom:22px;padding:16px;">
-      <div style="font-weight:600;margin-bottom:10px;">🔑 학생 비밀번호 초기화</div>
-      <div class="muted" style="font-size:12.5px;margin-bottom:10px;">학생이 비밀번호를 잊은 경우, 이름으로 찾아 임시 비밀번호로 초기화합니다.</div>
+      <div style="font-weight:600;margin-bottom:10px;">🔎 학생 검색 · 관리</div>
       <div style="display:flex;gap:8px;">
-        <input id="resetName" placeholder="학생 이름" style="flex:1;padding:9px 11px;border:1px solid var(--line);border-radius:8px;">
-        <button class="btn primary" onclick="resetStudentPw()">초기화</button>
+        <input id="stuSearch" placeholder="학생 이름 입력" style="flex:1;padding:9px 11px;border:1px solid var(--line);border-radius:8px;" onkeydown="if(event.key==='Enter')searchStudentAcct()">
+        <button class="btn primary" onclick="searchStudentAcct()">검색</button>
       </div>
+      <div id="stuResults" style="margin-top:12px;"></div>
     </div>
     <div class="card" style="margin-bottom:22px;padding:16px;">
       <div style="font-weight:600;margin-bottom:10px;">➕ 강사 계정 만들기</div>
@@ -913,19 +933,61 @@ async function renderAccounts(){
     <div class="card"><table><thead><tr><th>이름</th><th>아이디</th><th>권한</th><th>담당강사</th><th></th></tr></thead>
     <tbody>${acctRows||'<tr><td colspan="5" class="empty">계정이 없습니다.</td></tr>'}</tbody></table></div>`;
 }
-// 학생 비번 초기화 → 임시비번 발급
-async function resetStudentPw(){
-  const nm2=document.getElementById('resetName').value.trim();
-  if(!nm2){alert('학생 이름을 입력해 주세요.');return;}
-  if(!LIVE){alert('샘플 모드에서는 동작하지 않습니다.');return;}
-  // 이미 admin_students RPC로 로드된 목록에서 찾음 (직접 읽기 안 함)
-  const matches=DB.students.filter(s=>s.name===nm2);
-  if(!matches.length){alert('해당 이름의 학생을 찾을 수 없습니다.');return;}
-  if(matches.length>1 && !confirm(`'${nm2}' 학생이 ${matches.length}명 있습니다. 모두 초기화할까요?`))return;
-  const temp='0000';
-  const ph=await hashPw(temp);
-  for(const s of matches){ await sb.from('students').update({password_hash:ph}).eq('id',s.id); }
-  alert(`초기화 완료.\n임시 비밀번호: ${temp}\n학생에게 알려주고 로그인 후 변경하도록 안내해 주세요.`);
+// 학생 이름 검색 → 결과 카드에 수정/초기화/삭제 버튼
+async function searchStudentAcct(){
+  const q=document.getElementById('stuSearch').value.trim();
+  const box=document.getElementById('stuResults');
+  if(!q){box.innerHTML='<div class="muted">이름을 입력하세요.</div>';return;}
+  if(!LIVE){box.innerHTML='<div class="muted">샘플 모드에서는 동작하지 않습니다.</div>';return;}
+  const r=await sb.rpc('admin_search_students',{p_name:q});
+  if(r.error){box.innerHTML='<div class="muted">검색 오류: '+r.error.message+'</div>';return;}
+  if(!r.data||!r.data.length){box.innerHTML='<div class="muted">일치하는 학생이 없습니다.</div>';return;}
+  box.innerHTML=r.data.map(s=>{
+    const enrCount=DB.enrollments.filter(e=>e.student_id===s.id).length;
+    return `<div style="border:1px solid var(--line);border-radius:9px;padding:12px;margin-bottom:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+          <b style="font-size:15px;">${s.name}</b> <span class="muted">${s.grade!=null?gradeText(s.grade):''}</span>
+          <div class="cmeta" style="font-size:12.5px;">아이디: ${s.login_id||'-'} · 연락처: ${s.parent_phone||'-'} · 수강 ${enrCount}건</div>
+        </div>
+      </div>
+      <div class="row-actions" style="margin-top:8px;">
+        <button class="btn sm" onclick="editStudentAcct(${s.id},'${(s.name||'').replace(/'/g,'')}',${s.grade},'${(s.parent_phone||'').replace(/'/g,'')}')">정보 수정</button>
+        <button class="btn sm" onclick="resetStudentPwById(${s.id},'${(s.name||'').replace(/'/g,'')}')">비번 초기화</button>
+        <button class="btn sm ghost" onclick="deleteStudentAcct(${s.id},'${(s.name||'').replace(/'/g,'')}')">삭제</button>
+      </div></div>`;
+  }).join('');
+}
+async function resetStudentPwById(id,nm2){
+  if(!confirm(`'${nm2}' 학생의 비밀번호를 0000으로 초기화할까요?`))return;
+  const ph=await hashPw('0000');
+  const r=await sb.rpc('admin_reset_student_pw',{p_student_id:id,p_new_hash:ph});
+  if(r.error){alert('오류: '+r.error.message);return;}
+  alert(`초기화 완료.\n'${nm2}' 학생의 임시 비밀번호: 0000\n로그인 후 변경하도록 안내해 주세요.`);
+}
+function editStudentAcct(id,nm2,grade,phone){
+  openModal('학생 정보 수정',`
+    <div class="field"><label>이름</label><input id="es_name" value="${nm2}"></div>
+    <div class="field"><label>학년</label>
+      <select id="es_grade">
+        <option value="0" ${grade==0?'selected':''}>7세</option>
+        ${[1,2,3,4,5,6].map(g=>`<option value="${g}" ${grade==g?'selected':''}>초${g}</option>`).join('')}
+        ${[7,8,9].map(g=>`<option value="${g}" ${grade==g?'selected':''}>중${g-6}</option>`).join('')}
+        ${[10,11,12].map(g=>`<option value="${g}" ${grade==g?'selected':''}>고${g-9}</option>`).join('')}
+        <option value="13" ${grade==13?'selected':''}>성인</option>
+      </select></div>
+    <div class="field"><label>학부모 연락처</label><input id="es_phone" value="${phone}"></div>`,
+    async()=>{
+      const r=await sb.rpc('admin_update_student',{p_id:id,p_name:val('es_name'),p_grade:+val('es_grade'),p_phone:val('es_phone')});
+      if(r.error){alert('수정 오류: '+r.error.message);return;}
+      await loadAll(); closeModal(); searchStudentAcct();
+    });
+}
+async function deleteStudentAcct(id,nm2){
+  if(!confirm(`'${nm2}' 학생을 삭제할까요?\n이 학생의 수강신청 내역도 함께 삭제됩니다.`))return;
+  const r=await sb.rpc('admin_delete_student',{p_id:id});
+  if(r.error){alert('삭제 오류: '+r.error.message);return;}
+  await loadAll(); alert('삭제되었습니다.'); searchStudentAcct();
 }
 async function resetAdminPw(id,nm2){
   if(!LIVE){alert('샘플 모드에서는 동작하지 않습니다.');return;}
@@ -934,6 +996,12 @@ async function resetAdminPw(id,nm2){
   const{error}=await sb.from('admin_users').update({password_hash:ph}).eq('id',id);
   if(error){alert('오류: '+error.message);return;}
   alert('초기화 완료. 임시 비밀번호: 0000');
+}
+async function deleteAdminAcct(id,nm2){
+  if(!confirm(`강사 계정 '${nm2}'을 삭제할까요?`))return;
+  const r=await sb.rpc('admin_delete_admin',{p_id:id});
+  if(r.error){alert('삭제 오류: '+r.error.message);return;}
+  alert('삭제되었습니다.'); renderAccounts();
 }
 async function createTeacherAcct(){
   const lid=document.getElementById('ta_id').value.trim();
