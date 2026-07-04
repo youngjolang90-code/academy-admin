@@ -1023,10 +1023,17 @@ async function createTeacherAcct(){
 }
 
 function renderMaster(){
-  const tabs=[['subjects','과목'],['instructors','강사'],['rooms','장소'],['target_groups','대상그룹']];
+  const tabs=[['subjects','과목'],['instructors','강사'],['rooms','장소'],['target_groups','대상그룹'],['semesters','학기']];
   const t=masterTab;
   let cols,rows;
-  if(t==='target_groups'){
+  if(t==='semesters'){
+    cols='<th>학기명</th><th>기간</th><th>활성</th><th></th>';
+    rows=(DB.semesters||[]).map(x=>`<tr>
+      <td><b>${x.name}</b></td>
+      <td class="muted">${x.start_date||'-'} ~ ${x.end_date||'-'}</td>
+      <td>${x.is_active?'<span style="color:#1f6b54;font-weight:600;">● 활성</span>':'<button class="btn sm" onclick="activateSemester('+x.id+')">활성화</button>'}</td>
+      <td><div class="row-actions"><button class="btn sm ghost" onclick="del('semesters',${x.id})">삭제</button></div></td></tr>`).join('');
+  } else if(t==='target_groups'){
     cols='<th>표기</th><th>학년범위</th><th>성별</th><th></th>';
     rows=DB[t].map(x=>`<tr><td><b>${x.label}</b></td><td class="muted">${x.grade_from}~${x.grade_to}</td><td class="muted">${x.gender||'-'}</td>
       <td><div class="row-actions"><button class="btn sm ghost" onclick="del('${t}',${x.id})">삭제</button></div></td></tr>`).join('');
@@ -1035,24 +1042,51 @@ function renderMaster(){
     rows=DB[t].map(x=>`<tr><td><b>${x.name}</b></td>
       <td><div class="row-actions"><button class="btn sm ghost" onclick="del('${t}',${x.id})">삭제</button></div></td></tr>`).join('');
   }
-  main.innerHTML=head('기초자료','과목·강사·장소·대상 마스터를 관리합니다.',
-    `<button class="btn primary" onclick="masterForm()">+ 추가</button>`)+connBanner()+`
+  const addLabel=t==='semesters'?'+ 학기 추가':'+ 추가';
+  main.innerHTML=head('기초자료','과목·강사·장소·대상·학기를 관리합니다.',
+    `<button class="btn primary" onclick="masterForm()">${addLabel}</button>`)+connBanner()+`
     <div class="tabs">${tabs.map(([k,l])=>`<div class="tab ${k===t?'active':''}" onclick="masterTab='${k}';renderMaster()">${l}</div>`).join('')}</div>
-    <div class="card"><table><thead><tr>${cols}</tr></thead><tbody>${rows||'<tr><td colspan="4" class="empty">항목이 없습니다.</td></tr>'}</tbody></table></div>`;
+    <div class="card"><table><thead><tr>${cols}</tr></thead><tbody>${rows||'<tr><td colspan="4" class="empty">항목이 없습니다.</td></tr>'}</tbody></table></div>
+    ${t==='semesters'?'<p class="muted" style="font-size:12px;margin-top:10px;">활성 학기는 하나만 지정됩니다. 새 강좌는 활성 학기에 자동 배정됩니다.</p>':''}`;
+}
+// 학기 활성화 (하나만 활성)
+async function activateSemester(id){
+  if(LIVE){
+    await sb.from('semesters').update({is_active:false}).neq('id',0); // 전체 비활성
+    const{error}=await sb.from('semesters').update({is_active:true}).eq('id',id);
+    if(error){alert('오류: '+error.message);return;}
+    await loadAll();
+  } else {
+    DB.semesters.forEach(s=>s.is_active=(s.id===id));
+  }
+  renderMaster();
 }
 function masterForm(){
   const t=masterTab;
   let body;
-  if(t==='target_groups') body=`
+  if(t==='semesters') body=`
+    <div class="field"><label>학기명 (예: 2026 여름학기)</label><input id="m_semname"></div>
+    <div class="grid2">
+      <div class="field"><label>시작일</label><input id="m_start" type="date"></div>
+      <div class="field"><label>종료일</label><input id="m_end" type="date"></div>
+    </div>
+    <div class="field"><label><input id="m_active" type="checkbox" style="width:auto;margin-right:6px;">이 학기를 활성으로 설정</label></div>`;
+  else if(t==='target_groups') body=`
     <div class="field"><label>표기 (예: 초1-초6)</label><input id="m_label"></div>
     <div class="muted" style="font-size:11px;margin-bottom:10px;">학년 코드: 7세=0 · 초1~6=1~6 · 중1~3=7~9 · 고1~3=10~12 · 성인=13</div>
     <div class="grid2"><div class="field"><label>시작 학년</label><input id="m_from" type="number" value="1"></div>
     <div class="field"><label>끝 학년</label><input id="m_to" type="number" value="6"></div></div>
     <div class="field"><label>성별</label><select id="m_gender"><option>공용</option><option>남</option><option>여</option></select></div>`;
   else body=`<div class="field"><label>이름</label><input id="m_name"></div>`;
-  openModal('항목 추가',body,async()=>{
+  openModal(t==='semesters'?'학기 추가':'항목 추가',body,async()=>{
     let obj;
-    if(t==='target_groups')obj={label:val('m_label'),grade_from:+val('m_from'),grade_to:+val('m_to'),gender:val('m_gender')};
+    if(t==='semesters'){
+      if(!val('m_semname')){alert('학기명을 입력해 주세요.');return;}
+      const active=document.getElementById('m_active').checked;
+      if(active && LIVE){ await sb.from('semesters').update({is_active:false}).neq('id',0); }
+      obj={name:val('m_semname'),start_date:val('m_start')||null,end_date:val('m_end')||null,is_active:active};
+    }
+    else if(t==='target_groups')obj={label:val('m_label'),grade_from:+val('m_from'),grade_to:+val('m_to'),gender:val('m_gender')};
     else obj={name:val('m_name')};
     await save(t,null,obj);closeModal();renderMaster();
   });
@@ -1116,6 +1150,26 @@ async function save(table,id,obj){
   }
 }
 async function del(table,id){
+  // 강좌 삭제 시엔 연결된 신청·세션·강사연결을 먼저 정리
+  if(table==='courses'){
+    const enrCount=DB.enrollments.filter(e=>e.course_id===id).length;
+    const msg=enrCount>0
+      ? `이 강좌에 수강신청 ${enrCount}건이 있습니다.\n강좌와 신청내역을 모두 삭제할까요?`
+      : '이 강좌를 삭제할까요?';
+    if(!confirm(msg))return;
+    if(LIVE){
+      await sb.from('enrollments').delete().eq('course_id',id);
+      await sb.from('course_sessions').delete().eq('course_id',id);
+      await sb.from('course_instructors').delete().eq('course_id',id);
+      const{error}=await sb.from('courses').delete().eq('id',id);
+      if(error){alert('삭제 오류: '+error.message);return;}
+      await loadAll();
+    } else {
+      DB.enrollments=DB.enrollments.filter(e=>e.course_id!==id);
+      DB.courses=DB.courses.filter(x=>x.id!==id);
+    }
+    render(); return;
+  }
   if(!confirm('정말 삭제할까요?'))return;
   if(LIVE){const{error}=await sb.from(table).delete().eq('id',id);if(error){alert(error.message);return;}await loadAll();}
   else{DB[table]=DB[table].filter(x=>x.id!==id);}
