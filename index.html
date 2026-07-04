@@ -54,10 +54,12 @@
   .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
   table{width:100%;border-collapse:collapse;font-size:13px;}
   th{text-align:left;font-weight:600;color:var(--ink-soft);font-size:11.5px;
-    text-transform:uppercase;letter-spacing:.04em;padding:11px 14px;border-bottom:1px solid var(--line);}
-  td{padding:11px 14px;border-bottom:1px solid var(--line-soft);vertical-align:middle;}
+    letter-spacing:.02em;padding:10px 14px;border-bottom:1.5px solid var(--line);white-space:nowrap;}
+  td{padding:12px 14px;border-bottom:1px solid var(--line-soft);vertical-align:top;line-height:1.5;}
+  td b{font-weight:600;color:var(--ink);}
   tr:last-child td{border-bottom:none;}
   tr:hover td{background:#fafbf9;}
+  td .cmeta{color:var(--ink-soft);font-size:12px;margin-top:2px;line-height:1.45;}
   .tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11.5px;font-weight:600;
     background:var(--brand-soft);color:var(--brand);}
   .muted{color:var(--ink-soft);}
@@ -454,16 +456,17 @@ function explain(cid){
 // ── 강좌 관리 ──
 function renderCourses(){
   const rows=DB.courses.map(c=>{
-    const s=(c.sessions||[]).map(x=>`${WD[x.weekday]} ${hhmm(x.start_time)}~${hhmm(x.end_time)}`).join(', ')||'-';
+    const sList=(c.sessions||[]).map(x=>`${WD[x.weekday]} ${hhmm(x.start_time)}~${hhmm(x.end_time)}`);
+    const s=sList.length?sList.join('<br>'):'-';
     const room=(c.sessions||[])[0]?name('rooms',c.sessions[0].room_id):'-';
     return `<tr>
       <td><span class="tag">${name('subjects',c.subject_id)}</span></td>
       <td><b>${c.title}</b></td>
-      <td>${name('instructors',c.instructor_id)}</td>
-      <td class="muted">${name('target_groups',c.target_id)}</td>
-      <td class="muted">${s}</td>
-      <td class="muted">${room}</td>
-      <td>${c.tuition?c.tuition.toLocaleString()+'원':'-'}</td>
+      <td style="white-space:nowrap;">${name('instructors',c.instructor_id)}</td>
+      <td class="muted" style="white-space:nowrap;">${name('target_groups',c.target_id)}</td>
+      <td class="muted" style="font-size:12px;white-space:nowrap;">${s}</td>
+      <td class="muted" style="white-space:nowrap;">${room}</td>
+      <td style="white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;">${c.tuition?c.tuition.toLocaleString()+'원':'-'}</td>
       <td><div class="row-actions">
         <button class="btn sm" onclick="courseForm(${c.id})">수정</button>
         <button class="btn sm ghost" onclick="del('courses',${c.id})">삭제</button>
@@ -471,8 +474,8 @@ function renderCourses(){
   }).join('');
   main.innerHTML=head('강좌 관리',`총 ${DB.courses.length}개 강좌`,
     `<button class="btn sm" onclick="exportExcel('courses')" style="margin-right:6px;">엑셀 저장</button><button class="btn primary" onclick="courseForm()">+ 강좌 추가</button>`)+connBanner()+`
-    <div class="card"><table><thead><tr>
-      <th>과목</th><th>강좌명</th><th>강사</th><th>대상</th><th>요일·시간</th><th>장소</th><th>수강료</th><th></th>
+    <div class="card" style="overflow-x:auto;"><table><thead><tr>
+      <th>과목</th><th>강좌명</th><th>강사</th><th>대상</th><th>요일·시간</th><th>장소</th><th style="text-align:right;">수강료</th><th></th>
     </tr></thead><tbody>${rows||'<tr><td colspan="8" class="empty">강좌가 없습니다.</td></tr>'}</tbody></table></div>`;
 }
 // 선택+직접입력 겸용 칸 + 자동완성 목록 생성
@@ -1032,7 +1035,10 @@ function renderMaster(){
       <td><b>${x.name}</b></td>
       <td class="muted">${x.start_date||'-'} ~ ${x.end_date||'-'}</td>
       <td>${x.is_active?'<span style="color:#1f6b54;font-weight:600;">● 활성</span>':'<button class="btn sm" onclick="activateSemester('+x.id+')">활성화</button>'}</td>
-      <td><div class="row-actions"><button class="btn sm ghost" onclick="del('semesters',${x.id})">삭제</button></div></td></tr>`).join('');
+      <td><div class="row-actions">
+        <button class="btn sm" onclick="semesterEdit(${x.id})">수정</button>
+        <button class="btn sm ghost" onclick="delSemester(${x.id})">삭제</button>
+      </div></td></tr>`).join('');
   } else if(t==='target_groups'){
     cols='<th>표기</th><th>학년범위</th><th>성별</th><th></th>';
     rows=DB[t].map(x=>`<tr><td><b>${x.label}</b></td><td class="muted">${x.grade_from}~${x.grade_to}</td><td class="muted">${x.gender||'-'}</td>
@@ -1060,6 +1066,53 @@ async function activateSemester(id){
     DB.semesters.forEach(s=>s.is_active=(s.id===id));
   }
   renderMaster();
+}
+// 학기 수정 (이름·기간·활성)
+function semesterEdit(id){
+  const s=DB.semesters.find(x=>x.id===id); if(!s)return;
+  openModal('학기 수정',`
+    <div class="field"><label>학기명</label><input id="se_name" value="${(s.name||'').replace(/"/g,'&quot;')}"></div>
+    <div class="grid2">
+      <div class="field"><label>시작일</label><input id="se_start" type="date" value="${s.start_date||''}"></div>
+      <div class="field"><label>종료일</label><input id="se_end" type="date" value="${s.end_date||''}"></div>
+    </div>`,
+    async()=>{
+      if(!val('se_name')){alert('학기명을 입력해 주세요.');return;}
+      const obj={name:val('se_name'),start_date:val('se_start')||null,end_date:val('se_end')||null};
+      if(LIVE){
+        const{error}=await sb.from('semesters').update(obj).eq('id',id);
+        if(error){alert('수정 오류: '+error.message);return;}
+        await loadAll();
+      } else { Object.assign(s,obj); }
+      closeModal(); renderMaster();
+    });
+}
+// 학기 안전 삭제 (강좌가 있으면 막음)
+async function delSemester(id){
+  const cnt=DB.courses.filter(c=>c.semester_id===id).length;
+  if(cnt>0){
+    alert(`이 학기에 강좌 ${cnt}개가 속해 있어 삭제할 수 없습니다.\n\n먼저 강좌를 다른 학기로 옮기거나 삭제해 주세요.\n(실수로 전체 강좌가 지워지는 것을 막기 위한 보호입니다.)`);
+    return;
+  }
+  if(!confirm('이 학기를 삭제할까요? (연결된 강좌 없음)'))return;
+  if(LIVE){const{error}=await sb.from('semesters').delete().eq('id',id);if(error){alert('삭제 오류: '+error.message);return;}await loadAll();}
+  else{DB.semesters=DB.semesters.filter(x=>x.id!==id);}
+  renderMaster();
+}
+// 종료일 지난 활성 학기 자동 감지 → 백업 안내 + 비활성화
+async function checkExpiredSemester(){
+  if(!LIVE)return;
+  const today=new Date(); today.setHours(0,0,0,0);
+  const expired=(DB.semesters||[]).filter(s=>s.is_active && s.end_date && new Date(s.end_date)<today);
+  for(const s of expired){
+    const ok=confirm(`'${s.name}' 학기의 종료일(${s.end_date})이 지났습니다.\n\n지금 전체 데이터를 백업하고 이 학기를 비활성화할까요?\n(확인을 누르면 시트 백업이 실행됩니다)`);
+    if(ok){
+      try{ await backupToSheet(); }catch(e){}
+      await sb.from('semesters').update({is_active:false}).eq('id',s.id);
+      await loadAll();
+      alert(`'${s.name}' 학기가 비활성화되었습니다.\n새 학기를 만들어 활성화해 주세요.`);
+    }
+  }
 }
 function masterForm(){
   const t=masterTab;
@@ -1383,6 +1436,8 @@ function startApp(){
   // 첫 화면 active 표시 동기화
   document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
   render();
+  // 관리자 로그인 시 종료된 학기 자동 감지 (백업+비활성화 안내)
+  if(isAdmin()) setTimeout(()=>checkExpiredSemester(),800);
 }
 
 // ════════ 시작 ════════
