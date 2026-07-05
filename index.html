@@ -178,7 +178,8 @@
     <button class="navbtn active" data-view="search"><span class="ic">🔍</span><span>통합검색</span></button>
     <button class="navbtn" data-view="timetable"><span class="ic">▦</span><span>주간 시간표</span></button>
     <button class="navbtn" data-view="courses"><span class="ic">▤</span><span>강좌 관리</span></button>
-    <button class="navbtn" data-view="students"><span class="ic">☺</span><span>학생·수강신청</span></button>
+    <button class="navbtn" data-view="students"><span class="ic">☺</span><span>학생 관리</span></button>
+    <button class="navbtn" data-view="enrollments"><span class="ic">📝</span><span>수강신청 관리</span></button>
     <button class="navbtn" data-view="master"><span class="ic">⚙</span><span>기초자료</span></button>
     <button class="navbtn" data-view="calendar"><span class="ic">📅</span><span>학사 캘린더</span></button>
     <button class="navbtn" data-view="accounts" id="accountsBtn"><span class="ic">🔑</span><span>계정관리</span></button>
@@ -282,6 +283,7 @@ function conflicts(){
 const main=document.getElementById('main');
 let view='timetable';
 let stuQuery='';
+let enrQuery='';
 
 const TAB_TITLES={search:'통합검색',timetable:'주간 시간표',courses:'강좌 관리',students:'학생·수강신청',master:'기초자료',calendar:'학사 캘린더',accounts:'계정관리'};
 function setView(v){view=v;
@@ -300,7 +302,7 @@ function closeDrawer(){
   if(s)s.classList.remove('open'); if(b)b.classList.remove('open');
 }
 
-function render(){({search:renderSearch,timetable:renderTimetable,courses:renderCourses,students:renderStudents,master:renderMaster,accounts:renderAccounts,calendar:renderCalendar}[view])();}
+function render(){({search:renderSearch,timetable:renderTimetable,courses:renderCourses,students:renderStudents,enrollments:renderEnrollments,master:renderMaster,accounts:renderAccounts,calendar:renderCalendar}[view])();}
 
 function head(title,sub,btn){
   return `<div class="head"><div><h1>${title}</h1><div class="sub">${sub}</div></div>${btn||''}</div>`;
@@ -651,89 +653,165 @@ async function resolveIdByName(arr,raw){
 }
 
 // ── 학생·수강신청 ──
+// ═══ 학생 관리: 검색 → 정보 확인·수정·삭제 ═══
 function renderStudents(){
   const q=(stuQuery||'').trim();
   const filtered=q?DB.students.filter(s=>(s.name||'').includes(q)):DB.students;
   const rows=filtered.map(s=>{
-    const enr=DB.enrollments.filter(e=>e.student_id===s.id);
-    const cnt=enr.length;
+    const cnt=DB.enrollments.filter(e=>e.student_id===s.id).length;
     const badge=cnt>0
       ? `<span class="tag" style="background:var(--brand-soft);color:var(--brand);">${cnt}개</span>`
       : '<span class="muted">없음</span>';
-    // 이 학생이 내야 할 총 수강료 (신청한 모든 강좌 기준)
-    const stuTotal=enr.reduce((sum,e)=>{
-      const c=DB.courses.find(x=>x.id===e.course_id); return sum+((c&&c.tuition)||0);
-    },0);
     return `<tr style="cursor:pointer;" onclick="studentDetail(${s.id})">
       <td><b>${s.name}</b></td>
       <td class="muted">${s.grade!=null?gradeText(s.grade):'-'}</td>
       <td class="muted">${s.parent_phone||'-'}</td>
+      <td class="muted">${s.login_id||'-'}</td>
       <td>${badge}</td>
-      <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:600;">${stuTotal?stuTotal.toLocaleString()+'원':'-'}</td>
       <td onclick="event.stopPropagation()"><div class="row-actions">
         <button class="btn sm" onclick="studentForm(${s.id})">수정</button>
         <button class="btn sm ghost" onclick="del('students',${s.id})">삭제</button>
       </div></td></tr>`;
   }).join('');
-  const enrolled=c=>DB.enrollments.filter(e=>e.course_id===c.id&&e.status==='ENROLLED').length;
-  // 등록 인원 내림차순 정렬
-  const counts=DB.courses
-    .map(c=>({c,n:enrolled(c)}))
-    .sort((a,b)=>b.n-a.n)
-    .map(({c,n})=>`<tr><td><b>${c.title}</b></td><td>${name('subjects',c.subject_id)}</td><td style="text-align:right;font-variant-numeric:tabular-nums;">${n}명</td></tr>`).join('');
 
-  // 결제 관리: 미납 건만 노출
-  const PAY_LABEL={PAID:'완납',UNPAID:'미납',REFUNDED:'환불'};
-  const PAY_COLOR={PAID:'#1f6b54',UNPAID:'#a32d2d',REFUNDED:'#7a6a3a'};
-  const unpaid=DB.enrollments.filter(e=>e.payment_status==='UNPAID'||!e.payment_status);
-  const payRows=unpaid.map(e=>{
-    const st=DB.students.find(x=>x.id===e.student_id);
-    const c=DB.courses.find(x=>x.id===e.course_id);
-    if(!st||!c)return'';
-    const pay=e.payment_status||'UNPAID';
-    const waitTag=e.status==='WAITLIST'?' <span class="tag full" style="font-size:10px;">대기</span>':'';
-    const confirmed=e.confirmed===true;
-    const confBadge=confirmed
-      ? '<span style="font-weight:600;color:#1f6b54;">확정</span>'
-      : '<span class="muted">미확정</span>';
-    const confBtn=confirmed
-      ? `<button class="btn sm ghost" onclick="setConfirm(${e.id},false)">확정 해제</button>`
-      : `<button class="btn sm" onclick="setConfirm(${e.id},true)">확정</button>`;
-    return `<tr>
-      <td><b>${st.name}</b> <span class="muted" style="font-size:11px;">${st.grade!=null?gradeText(st.grade):''}</span></td>
-      <td>${c.title}${waitTag}</td>
-      <td style="text-align:right;font-variant-numeric:tabular-nums;">${c.tuition?c.tuition.toLocaleString()+'원':'-'}</td>
-      <td><span style="font-weight:600;color:${PAY_COLOR[pay]};">${PAY_LABEL[pay]}</span></td>
-      <td>${confBadge}</td>
-      <td><div class="row-actions">
-        ${confBtn}
-        <button class="btn sm" onclick="setPay(${e.id},'PAID')">완납</button>
-        <button class="btn sm ghost" onclick="setPay(${e.id},'REFUNDED')">환불</button>
-      </div></td></tr>`;
-  }).filter(Boolean).join('');
-
-  main.innerHTML=head('학생 · 수강신청',`총 ${DB.students.length}명`,
-    `<button class="btn sm" onclick="exportExcel('students')" style="margin-right:6px;">학생 엑셀</button><button class="btn sm" onclick="exportExcel('enrollments')" style="margin-right:6px;">신청 엑셀</button><button class="btn primary" onclick="studentForm()">+ 학생 추가</button>`)+connBanner()+`
+  main.innerHTML=head('학생 관리',`총 ${DB.students.length}명`,
+    `<button class="btn sm" onclick="exportExcel('students')" style="margin-right:6px;">학생 엑셀</button><button class="btn primary" onclick="studentForm()">+ 학생 추가</button>`)+connBanner()+`
     <div style="display:flex;gap:8px;margin-bottom:12px;">
       <input id="stuListSearch" placeholder="학생 이름 검색" value="${q.replace(/"/g,'&quot;')}"
         oninput="stuQuery=this.value;renderStudents();document.getElementById('stuListSearch').focus();"
         style="flex:1;max-width:280px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;">
       ${q?`<button class="btn sm ghost" onclick="stuQuery='';renderStudents()">전체 보기</button>`:''}
     </div>
-    <div class="card" style="margin-bottom:22px;"><table><thead><tr>
-      <th>이름</th><th>학년</th><th>학부모 연락처</th><th>수강 강좌</th><th style="text-align:right;">총 수강료</th><th></th>
+    <div class="card"><table><thead><tr>
+      <th>이름</th><th>학년</th><th>학부모 연락처</th><th>아이디</th><th>수강</th><th></th>
     </tr></thead><tbody>${rows||`<tr><td colspan="6" class="empty">${q?'검색 결과가 없습니다.':'학생이 없습니다.'}</td></tr>`}</tbody></table></div>
+    <p class="muted" style="font-size:12px;margin-top:10px;">학생을 누르면 상세 정보와 신청 강좌를 볼 수 있어요.</p>`;
+}
 
-    <div style="margin:0 0 10px;">
-      <h1 style="font-size:15px;margin:0 0 4px;">💳 수강료 납부 관리 (미납만)</h1>
-      <p class="muted" style="font-size:12.5px;margin:0;">미납 ${unpaid.length}건 · 완납 처리하면 목록에서 사라집니다.</p>
+// ═══ 수강신청 관리: 검색 → 그 학생의 신청 강좌 + 납부 처리 ═══
+function renderEnrollments(){
+  const q=(enrQuery||'').trim();
+
+  // 검색어가 있으면 해당 학생들의 상세 카드, 없으면 미납 요약
+  let content;
+  if(q){
+    const matched=DB.students.filter(s=>(s.name||'').includes(q));
+    if(!matched.length){
+      content=`<div class="card"><div class="empty" style="padding:30px;">'${q}' 학생을 찾을 수 없습니다.</div></div>`;
+    } else {
+      content=matched.map(s=>enrollCard(s)).join('');
+    }
+  } else {
+    // 미납 있는 학생 요약
+    const unpaidEnr=DB.enrollments.filter(e=>e.payment_status==='UNPAID'||!e.payment_status);
+    const byStu={};
+    unpaidEnr.forEach(e=>{
+      const c=DB.courses.find(x=>x.id===e.course_id); if(!c)return;
+      (byStu[e.student_id]=byStu[e.student_id]||{amount:0,count:0}).amount+=(c.tuition||0);
+      byStu[e.student_id].count++;
+    });
+    const payRows=Object.keys(byStu).map(sid=>{
+      const st=DB.students.find(x=>x.id===+sid); if(!st)return'';
+      const info=byStu[sid];
+      return `<tr style="cursor:pointer;" onclick="enrQuery='${(st.name||'').replace(/'/g,'')}';renderEnrollments()">
+        <td><b>${st.name}</b> <span class="muted" style="font-size:11px;">${st.grade!=null?gradeText(st.grade):''}</span></td>
+        <td class="muted">${info.count}개 강좌</td>
+        <td style="text-align:right;font-variant-numeric:tabular-nums;font-weight:600;color:#a32d2d;">${info.amount.toLocaleString()}원</td>
+        <td onclick="event.stopPropagation()"><div class="row-actions">
+          <button class="btn sm" onclick="payAllForStudent(${st.id})">전체 완납</button>
+        </div></td></tr>`;
+    }).filter(Boolean).join('');
+    content=`
+      <div style="margin:0 0 10px;">
+        <h1 style="font-size:15px;margin:0 0 4px;">💳 미납 학생 (${Object.keys(byStu).length}명)</h1>
+        <p class="muted" style="font-size:12.5px;margin:0;">학생을 누르면 상세 납부 처리, 위에서 이름으로 검색할 수도 있어요.</p>
+      </div>
+      <div class="card"><table><thead><tr>
+        <th>학생</th><th>미납 강좌</th><th style="text-align:right;">미납 금액</th><th></th>
+      </tr></thead><tbody>${payRows||'<tr><td colspan="4" class="empty">미납 학생이 없습니다. 👍</td></tr>'}</tbody></table></div>`;
+  }
+
+  main.innerHTML=head('수강신청 관리','학생을 검색해 신청 강좌와 납부를 관리합니다.',
+    `<button class="btn sm" onclick="exportExcel('enrollments')">신청 엑셀</button>`)+connBanner()+`
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      <input id="enrSearch" placeholder="학생 이름 검색" value="${q.replace(/"/g,'&quot;')}"
+        oninput="enrQuery=this.value;renderEnrollments();document.getElementById('enrSearch').focus();"
+        style="flex:1;max-width:280px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;">
+      ${q?`<button class="btn sm ghost" onclick="enrQuery='';renderEnrollments()">미납 요약 보기</button>`:''}
     </div>
-    <div class="card" style="margin-bottom:16px;"><table><thead><tr>
-      <th>학생</th><th>강좌</th><th style="text-align:right;">수강료</th><th>납부</th><th>확정</th><th></th>
-    </tr></thead><tbody>${payRows||'<tr><td colspan="6" class="empty">미납 내역이 없습니다. 👍</td></tr>'}</tbody></table></div>
+    ${content}`;
+}
 
-    <h1 style="font-size:15px;margin:22px 0 10px;">강좌별 등록 인원</h1>
-    <div class="card"><table><thead><tr><th>강좌</th><th>과목</th><th style="text-align:right;">등록</th></tr></thead><tbody>${counts}</tbody></table></div>`;
+// 한 학생의 신청·납부 카드 (수강신청 관리용)
+function enrollCard(s){
+  const enr=DB.enrollments.filter(e=>e.student_id===s.id);
+  let total=0,unpaidTotal=0,unpaidCnt=0;
+  const PAY={PAID:['완납','#1f6b54'],UNPAID:['미납','#a32d2d'],REFUNDED:['환불','#7a6a3a']};
+  const list=enr.map(e=>{
+    const c=DB.courses.find(x=>x.id===e.course_id); if(!c)return'';
+    const tui=c.tuition||0; total+=tui;
+    const ps=e.payment_status||'UNPAID';
+    if(ps==='UNPAID'){unpaidTotal+=tui;unpaidCnt++;}
+    const when=(c.sessions||[]).map(x=>`${WD[x.weekday]} ${hhmm(x.start_time)}~${hhmm(x.end_time)}`).join(', ');
+    const pay=PAY[ps];
+    const wait=e.status==='WAITLIST'?' <span class="tag full" style="font-size:10px;">대기</span>':'';
+    const payBtn=ps==='UNPAID'
+      ? `<button class="btn sm" onclick="payOneEnr(${e.id})">완납</button>`
+      : (ps==='PAID'?`<button class="btn sm ghost" onclick="setPayEnr(${e.id},'UNPAID')">미납전환</button>`:'');
+    return `<tr>
+      <td><b>${c.title}</b>${wait}<div class="cmeta" style="font-size:11.5px;">${name('subjects',c.subject_id)} · ${name('instructors',c.instructor_id)} · ${when||'-'}</div></td>
+      <td style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;">${tui?tui.toLocaleString()+'원':'-'}</td>
+      <td style="white-space:nowrap;"><span style="font-weight:600;color:${pay[1]};">${pay[0]}</span></td>
+      <td onclick="event.stopPropagation()"><div class="row-actions">${payBtn}</div></td>
+    </tr>`;
+  }).filter(Boolean).join('')||'<tr><td colspan="4" class="empty">신청한 강좌가 없습니다.</td></tr>';
+
+  const bulk=unpaidCnt>0
+    ? `<button class="btn primary btn sm" onclick="payAllForStudent(${s.id})">미납 ${unpaidCnt}건 전체 완납 (${unpaidTotal.toLocaleString()}원)</button>`
+    : '<span style="color:#1f6b54;font-weight:600;font-size:13px;">완납 완료 👍</span>';
+
+  return `<div class="card" style="margin-bottom:18px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 4px 12px;border-bottom:1px solid var(--line);margin-bottom:8px;">
+      <div><b style="font-size:16px;">${s.name}</b> <span class="muted">${s.grade!=null?gradeText(s.grade):''} · ${s.parent_phone||'연락처 없음'}</span></div>
+      <div style="text-align:right;">
+        <div class="muted" style="font-size:11px;">총 수강료</div>
+        <div style="font-size:16px;font-weight:700;color:var(--brand);font-variant-numeric:tabular-nums;">${total.toLocaleString()}원</div>
+      </div>
+    </div>
+    <table><thead><tr><th>강좌</th><th style="text-align:right;">수강료</th><th>납부</th><th></th></tr></thead>
+    <tbody>${list}</tbody></table>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:10px;border-top:1px solid var(--line);">
+      <span class="muted" style="font-size:12.5px;">${unpaidCnt>0?`미납 ${unpaidCnt}건 · ${unpaidTotal.toLocaleString()}원`:'미납 없음'}</span>
+      ${bulk}
+    </div></div>`;
+}
+
+// 수강신청 관리: 강좌 하나 완납/전환
+async function payOneEnr(enrollId){ await setPayEnr(enrollId,'PAID'); }
+async function setPayEnr(enrollId,status){
+  if(LIVE){
+    const{error}=await sb.from('enrollments').update({payment_status:status}).eq('id',enrollId);
+    if(error){alert('오류: '+error.message);return;}
+    await loadAll();
+  } else {
+    const e=DB.enrollments.find(x=>x.id===enrollId); if(e)e.payment_status=status;
+  }
+  renderEnrollments();
+}
+// 한 학생의 미납 강좌 전체를 완납 처리
+async function payAllForStudent(sid){
+  const st=DB.students.find(x=>x.id===sid); if(!st)return;
+  const unpaid=DB.enrollments.filter(e=>e.student_id===sid&&(e.payment_status==='UNPAID'||!e.payment_status));
+  if(!unpaid.length){alert('미납 강좌가 없습니다.');return;}
+  const total=unpaid.reduce((s,e)=>{const c=DB.courses.find(x=>x.id===e.course_id);return s+((c&&c.tuition)||0);},0);
+  if(!confirm(`'${st.name}' 학생의 미납 ${unpaid.length}개 강좌를 모두 완납 처리할까요?\n합계: ${total.toLocaleString()}원`))return;
+  if(LIVE){
+    for(const e of unpaid){ await sb.from('enrollments').update({payment_status:'PAID'}).eq('id',e.id); }
+    await loadAll();
+  } else {
+    unpaid.forEach(e=>e.payment_status='PAID');
+  }
+  renderEnrollments();
 }
 // 결제 상태 변경
 async function setPay(enrollId,status){
@@ -762,22 +840,30 @@ async function setConfirm(enrollId,confirmed){
 function studentDetail(id){
   const s=DB.students.find(x=>x.id===id); if(!s)return;
   const enr=DB.enrollments.filter(e=>e.student_id===id);
-  let total=0;
+  let total=0, unpaidTotal=0, unpaidCnt=0;
   const PAY={PAID:['완납','#1f6b54'],UNPAID:['미납','#a32d2d'],REFUNDED:['환불','#7a6a3a']};
   const list=enr.map(e=>{
     const c=DB.courses.find(x=>x.id===e.course_id); if(!c)return'';
     const tui=c.tuition||0; total+=tui;
+    const ps=e.payment_status||'UNPAID';
+    if(ps==='UNPAID'){unpaidTotal+=tui;unpaidCnt++;}
     const when=(c.sessions||[]).map(x=>`${WD[x.weekday]} ${hhmm(x.start_time)}~${hhmm(x.end_time)}`).join(', ');
-    const pay=PAY[e.payment_status||'UNPAID'];
+    const pay=PAY[ps];
     const wait=e.status==='WAITLIST'?' <span class="tag full" style="font-size:10px;">대기</span>':'';
     const conf=e.confirmed===true?' <span class="tag" style="font-size:10px;background:#dcefe7;color:#1f6b54;">확정</span>':'';
+    const payBtn=ps==='UNPAID'?`<button class="btn sm" style="margin-top:4px;" onclick="payOneInDetail(${e.id},${s.id})">완납</button>`:'';
     return `<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);">
       <div><b>${c.title}</b>${wait}${conf}<div class="cmeta" style="font-size:11.5px;">${name('subjects',c.subject_id)} · ${name('instructors',c.instructor_id)} · ${when||'-'}</div></div>
       <div style="text-align:right;white-space:nowrap;">
         <div style="font-variant-numeric:tabular-nums;">${tui?tui.toLocaleString()+'원':'-'}</div>
         <div style="font-size:11px;color:${pay[1]};font-weight:600;">${pay[0]}</div>
+        ${payBtn}
       </div></div>`;
   }).filter(Boolean).join('')||'<div class="muted" style="padding:10px 0;">신청한 강좌가 없습니다.</div>';
+
+  const bulkPayBtn=unpaidCnt>0
+    ? `<button class="btn primary" onclick="payAllForStudent(${s.id});closeModal();">미납 ${unpaidCnt}건 전체 완납 (${unpaidTotal.toLocaleString()}원)</button>`
+    : '';
 
   const body=`
     <div style="background:#fafbf9;border-radius:9px;padding:12px 14px;margin-bottom:14px;">
@@ -793,14 +879,30 @@ function studentDetail(id){
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:12px;border-top:2px solid var(--line);">
       <span style="font-weight:600;">수강료 합계</span>
       <span style="font-size:18px;font-weight:700;color:var(--brand);font-variant-numeric:tabular-nums;">${total.toLocaleString()}원</span>
-    </div>`;
-  // 조회 전용 모달 (저장 버튼 대신 닫기·수정)
+    </div>
+    ${unpaidCnt>0?`<div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+      <span class="muted" style="font-size:12.5px;">그 중 미납 ${unpaidCnt}건</span>
+      <span style="font-weight:600;color:#a32d2d;font-variant-numeric:tabular-nums;">${unpaidTotal.toLocaleString()}원</span>
+    </div>`:'<div style="margin-top:6px;text-align:right;color:#1f6b54;font-size:12.5px;font-weight:600;">완납 완료 👍</div>'}`;
   document.getElementById('modal').innerHTML=`<h3>${s.name} <span class="muted" style="font-size:13px;font-weight:400;">학생 상세</span></h3>${body}
-    <div class="modal-actions">
+    <div class="modal-actions" style="flex-wrap:wrap;gap:6px;">
       <button class="btn" onclick="closeModal()">닫기</button>
-      <button class="btn primary" onclick="closeModal();studentForm(${s.id})">정보 수정</button>
+      <button class="btn" onclick="closeModal();studentForm(${s.id})">정보 수정</button>
+      ${bulkPayBtn}
     </div>`;
   document.getElementById('overlay').classList.add('show');
+}
+// 상세 모달 안에서 강좌 하나 완납
+async function payOneInDetail(enrollId,sid){
+  if(LIVE){
+    const{error}=await sb.from('enrollments').update({payment_status:'PAID'}).eq('id',enrollId);
+    if(error){alert('오류: '+error.message);return;}
+    await loadAll();
+  } else {
+    const e=DB.enrollments.find(x=>x.id===enrollId); if(e)e.payment_status='PAID';
+  }
+  renderStudents();
+  studentDetail(sid); // 모달 갱신
 }
 function studentForm(id){
   const s=id?DB.students.find(x=>x.id===id):{};
@@ -1491,7 +1593,7 @@ function startApp(){
   if(isTeacher()){
     ttFilter=currentAdmin.instructor_id;
     document.querySelectorAll('.navbtn').forEach(b=>{
-      if(['students','master','accounts'].includes(b.dataset.view)) b.style.display='none';
+      if(['students','enrollments','master','accounts'].includes(b.dataset.view)) b.style.display='none';
       if(b.id==='backupBtn') b.style.display='none';
     });
   }
