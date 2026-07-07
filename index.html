@@ -330,15 +330,62 @@ function nowTeaching(c){
 }
 // ═══ 관리자 대시보드 (첫 화면 요약) ═══
 function renderDashboard(){
+  const teacher=isTeacher();
+  const myInst=teacher?currentAdmin.instructor_id:null;
   const today=new Date(); const wd=today.getDay()===0?7:today.getDay();
   const WDN=['','월','화','수','목','금','토','일'];
-  // 오늘 수업 (오늘 요일에 세션이 있는 강좌)
-  const todayCourses=DB.courses.filter(c=>(c.sessions||[]).some(s=>s.weekday===wd));
-  // 미납 학생 수
+
+  // 강사면 본인 담당 강좌만
+  const myCourses=teacher
+    ? DB.courses.filter(c=>c.instructor_id===myInst)
+    : DB.courses;
+  const myCourseIds=new Set(myCourses.map(c=>c.id));
+  const scopedEnr=teacher
+    ? DB.enrollments.filter(e=>myCourseIds.has(e.course_id))
+    : DB.enrollments;
+
+  // 오늘 수업 (본인 강좌 중 오늘 요일)
+  const todayCourses=myCourses.filter(c=>(c.sessions||[]).some(s=>s.weekday===wd));
+
+  if(teacher){
+    // ── 강사 전용 대시보드 ──
+    const myStudents=new Set(scopedEnr.map(e=>e.student_id)).size;
+    const stat=(label,val,color)=>`<div class="card" style="padding:16px 18px;flex:1;min-width:130px;">
+      <div class="muted" style="font-size:12px;">${label}</div>
+      <div style="font-size:26px;font-weight:700;color:${color};margin-top:2px;font-variant-numeric:tabular-nums;">${val}</div></div>`;
+    const todayList=todayCourses.length
+      ? todayCourses.map(c=>{
+          const ses=(c.sessions||[]).filter(s=>s.weekday===wd).map(s=>`${hhmm(s.start_time)}~${hhmm(s.end_time)} · ${name('rooms',s.room_id)}`).join('<br>');
+          const cnt=DB.enrollments.filter(e=>e.course_id===c.id&&e.status==='ENROLLED').length;
+          return `<tr><td><b>${c.title}</b></td><td class="muted">${ses}</td><td style="text-align:right;">${cnt}명</td></tr>`;
+        }).join('')
+      : '<tr><td colspan="3" class="empty">오늘 예정된 수업이 없습니다.</td></tr>';
+    // 내 강좌별 등록 인원
+    const courseList=myCourses.map(c=>{
+      const cnt=DB.enrollments.filter(e=>e.course_id===c.id&&e.status==='ENROLLED').length;
+      const when=(c.sessions||[]).map(s=>`${WDN[s.weekday]} ${hhmm(s.start_time)}~${hhmm(s.end_time)}`).join(', ');
+      return `<tr><td><b>${c.title}</b></td><td class="muted" style="font-size:12px;">${when}</td><td style="text-align:right;">${cnt}명</td></tr>`;
+    }).join('')||'<tr><td colspan="3" class="empty">담당 강좌가 없습니다.</td></tr>';
+
+    main.innerHTML=head('내 대시보드',`${today.getMonth()+1}월 ${today.getDate()}일 (${WDN[wd]}) · ${currentAdmin.name} 강사님`)+connBanner()+`
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;">
+        ${stat('내 강좌',myCourses.length+'개','var(--brand)')}
+        ${stat('오늘 수업',todayCourses.length+'개','var(--ink)')}
+        ${stat('내 학생',myStudents+'명','#5a6b8a')}
+      </div>
+      <h1 style="font-size:15px;margin:0 0 10px;">📅 오늘의 수업 (${todayCourses.length})</h1>
+      <div class="card" style="margin-bottom:22px;"><table><thead><tr><th>강좌</th><th>시간·장소</th><th style="text-align:right;">등록</th></tr></thead>
+      <tbody>${todayList}</tbody></table></div>
+      <h1 style="font-size:15px;margin:0 0 10px;">📚 내 담당 강좌</h1>
+      <div class="card"><table><thead><tr><th>강좌</th><th>요일·시간</th><th style="text-align:right;">등록</th></tr></thead>
+      <tbody>${courseList}</tbody></table></div>
+      <p class="muted" style="font-size:12px;margin-top:12px;">주간 시간표 메뉴에서 본인 수업 시간표를 크게 볼 수 있어요.</p>`;
+    return;
+  }
+
+  // ── 관리자 대시보드 ──
   const unpaidStu=new Set(DB.enrollments.filter(e=>e.payment_status==='UNPAID'||!e.payment_status).map(e=>e.student_id)).size;
-  // 미확정 신청 수
   const pending=DB.enrollments.filter(e=>e.confirmed!==true).length;
-  // 대기 신청
   const waiting=DB.enrollments.filter(e=>e.status==='WAITLIST').length;
   const openState=getSetting('enroll_open')!=='false';
 
@@ -1748,7 +1795,7 @@ function startApp(){
   // 연결 상태 표시에 로그인 정보 추가
   const txt=document.getElementById('connTxt');
   if(txt) txt.textContent=(currentAdmin.name)+' · '+(isAdmin()?'관리자':'강사');
-  view=isTeacher()?'timetable':'dashboard';
+  view='dashboard';
   // 첫 화면 active 표시 동기화
   document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
   render();
