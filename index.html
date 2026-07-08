@@ -1705,12 +1705,13 @@ function exportExcel(kind){
 // ════════ 시간표 PNG 저장 ════════
 async function exportTimetableImg(scale){
   if(typeof html2canvas==='undefined'){alert('이미지 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return;}
-  const el=document.querySelector('.tt-wrap');
-  if(!el){alert('시간표를 찾을 수 없습니다.');return;}
   const btn=document.getElementById('ttImgBtn'); const orig=btn?btn.textContent:'';
   if(btn)btn.textContent='저장 중…';
   try{
-    const canvas=await html2canvas(el,{scale:scale||2,backgroundColor:'#ffffff',scrollX:0,scrollY:0});
+    const el=buildPrettyTimetable();
+    document.body.appendChild(el);
+    const canvas=await html2canvas(el,{scale:scale||2,backgroundColor:'#ffffff'});
+    document.body.removeChild(el);
     const who = ttFilter==null ? '전체' : ((DB.instructors.find(i=>i.id===ttFilter)||{}).name||'');
     const today=new Date().toISOString().slice(0,10);
     const a=document.createElement('a');
@@ -1719,6 +1720,82 @@ async function exportTimetableImg(scale){
     a.click();
   }catch(e){alert('이미지 저장 오류: '+e.message);}
   if(btn)btn.textContent=orig;
+}
+// 저장 전용: 화면과 같은 1시간=1칸 표 구조 + 과목별 색·제목·범례 (출력/공유용)
+function buildPrettyTimetable(){
+  const flat=conflicts().filter(f=> ttFilter==null ? true : f.course.instructor_id===ttFilter);
+  // 과목별 파스텔 색상
+  const palette=[
+    ['#e8f0fe','#1a56b0'],['#e6f4ea','#1e7e45'],['#fce8e6','#b3261e'],
+    ['#fef7e0','#8a6d1a'],['#f3e8fd','#6b28b0'],['#e0f7fa','#00695c'],
+    ['#fce4ec','#a01050'],['#e8eaf6','#3a48a0'],['#f1f8e9','#558b2f'],
+    ['#fff3e0','#a1560a'],['#e0f2f1','#00796b'],['#ede7f6','#512da8']
+  ];
+  const subjColor={}; let ci=0;
+  [...new Set(DB.courses.map(c=>c.subject_id))].forEach(sid=>{subjColor[sid]=palette[ci++%palette.length];});
+
+  // 표시할 시간 범위 (강좌 있는 시간만)
+  const hrs=flat.map(f=>+f.start_time.split(':')[0]);
+  const endHrs=flat.map(f=>{const eh=+f.end_time.split(':')[0],em=+f.end_time.split(':')[1];return em>0?eh+1:eh;});
+  const minH=flat.length?Math.min(...hrs):9;
+  const maxH=flat.length?Math.max(...endHrs):22;
+
+  const WDN=['','월','화','수','목','금','토','일'];
+  const who = ttFilter==null ? '전체 강사' : ((DB.instructors.find(i=>i.id===ttFilter)||{}).name||'')+' 강사';
+  const today=new Date();
+  const dateStr=`${today.getFullYear()}. ${today.getMonth()+1}. ${today.getDate()}`;
+
+  const wrap=document.createElement('div');
+  wrap.style.cssText='position:fixed;left:-9999px;top:0;width:1180px;background:#fff;padding:34px 38px;box-sizing:border-box;'
+    +"font-family:'Pretendard','Apple SD Gothic Neo',sans-serif;";
+
+  let html=`<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:6px;">
+      <div style="font-size:27px;font-weight:800;color:#1a1a2e;letter-spacing:-.5px;">플래닛 아카데미 <span style="color:#2f8f6f;">주간 시간표</span></div>
+      <div style="text-align:right;font-size:13px;color:#889;">${who}<br>${dateStr} 기준</div>
+    </div>
+    <div style="height:3px;background:linear-gradient(90deg,#2f8f6f,#7bd);border-radius:2px;margin-bottom:16px;"></div>`;
+
+  html+='<table style="width:100%;border-collapse:collapse;table-layout:fixed;">';
+  html+='<colgroup><col style="width:52px;">'+[1,2,3,4,5,6,7].map(()=>'<col>').join('')+'</colgroup>';
+  html+='<thead><tr><th style="padding:9px 2px;background:#2e3a4d;color:#fff;font-size:13px;border:1px solid #2e3a4d;">시간</th>';
+  for(let d=1;d<=7;d++){
+    const weekend=d>=6;
+    html+=`<th style="padding:9px 2px;background:${weekend?'#3d4a5d':'#2e3a4d'};color:${weekend?'#ffd9a0':'#fff'};font-size:14px;font-weight:700;border:1px solid #2e3a4d;">${WDN[d]}</th>`;
+  }
+  html+='</tr></thead><tbody>';
+
+  for(let h=minH;h<maxH;h++){
+    html+=`<tr><td style="text-align:center;padding:2px;background:#f4f6f9;color:#667;font-size:11.5px;font-weight:600;border:1px solid #dde3ea;height:56px;vertical-align:top;">${String(h).padStart(2,'0')}:00</td>`;
+    for(let d=1;d<=7;d++){
+      const cells=flat.filter(f=>f.weekday===d && (+f.start_time.split(':')[0])===h);
+      html+='<td style="border:1px solid #e4e9ef;padding:2px;vertical-align:top;">';
+      html+=cells.map(f=>{
+        const col=subjColor[f.course.subject_id]||['#eee','#333'];
+        return `<div style="background:${col[0]};border-left:3px solid ${col[1]};border-radius:4px;padding:3px 5px;margin-bottom:2px;line-height:1.25;">
+          <div style="font-weight:700;font-size:11px;color:${col[1]};">${escapeHtml(f.course.title)}</div>
+          <div style="font-size:9.5px;color:#556;">${hhmm(f.start_time)}~${hhmm(f.end_time)}<br>${name('instructors',f.course.instructor_id)} · ${name('rooms',f.room_id)}</div>
+        </div>`;
+      }).join('');
+      html+='</td>';
+    }
+    html+='</tr>';
+  }
+  html+='</tbody></table>';
+
+  // 과목 색상 범례
+  const usedSubj=[...new Set(flat.map(f=>f.course.subject_id))];
+  if(usedSubj.length){
+    html+='<div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:10px 18px;font-size:12px;color:#556;">';
+    usedSubj.forEach(sid=>{
+      const col=subjColor[sid]||['#eee','#333'];
+      html+=`<span style="display:inline-flex;align-items:center;gap:6px;"><i style="width:14px;height:14px;border-radius:3px;background:${col[0]};border:1px solid ${col[1]};display:inline-block;"></i>${name('subjects',sid)}</span>`;
+    });
+    html+='</div>';
+  }
+  html+='<div style="margin-top:12px;text-align:right;font-size:11px;color:#aab;">flanetacademy.com</div>';
+
+  wrap.innerHTML=html;
+  return wrap;
 }
 
 // ════════ 어드민 로그인 + 권한 ════════
