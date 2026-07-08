@@ -1782,13 +1782,25 @@ function buildCleanTimetable(){
   }
   Object.values(byDay).forEach(layout);
 
+  // 요일별 최대 동시 겹침 수 → 칸 폭을 가변으로
+  const MINSUB=128;   // 겹칠 때 한 강좌의 최소 폭(px)
+  const BASEW=150;    // 겹침 없는 요일 기본 폭
+  const dayCols={};   // 요일별 최대 열 수
+  const dayW={};      // 요일별 칸 폭
+  for(let d=1;d<=7;d++){
+    const maxC=byDay[d].reduce((mx,s)=>Math.max(mx,s.cols||1),1);
+    dayCols[d]=maxC;
+    dayW[d]=maxC<=1 ? BASEW : Math.max(BASEW, maxC*MINSUB + (maxC+1)*3);
+  }
+
   const WDN=['','월','화','수','목','금','토','일'];
   const who = ttFilter==null ? '전체 강사' : ((DB.instructors.find(i=>i.id===ttFilter)||{}).name||'')+' 강사';
   const today=new Date();
   const dateStr=`${today.getFullYear()}. ${today.getMonth()+1}. ${today.getDate()}`;
 
   const COLW=140, TIMEW=58, HEADH=40;
-  const totalW=TIMEW+COLW*7;
+  const totalColW=[1,2,3,4,5,6,7].reduce((sum,d)=>sum+dayW[d],0);
+  const totalW=TIMEW+totalColW;
 
   const wrap=document.createElement('div');
   wrap.style.cssText='position:fixed;left:-9999px;top:0;width:'+(totalW+72)+'px;background:#fff;padding:32px 36px;box-sizing:border-box;font-family:'
@@ -1808,7 +1820,7 @@ function buildCleanTimetable(){
   html+=`<div style="width:${TIMEW}px;background:#2e3a4d;border:1px solid #2e3a4d;"></div>`;
   for(let d=1;d<=7;d++){
     const weekend=d>=6;
-    html+=`<div style="width:${COLW}px;background:${weekend?'#3d4a5d':'#2e3a4d'};color:${weekend?'#ffd9a0':'#fff'};
+    html+=`<div style="width:${dayW[d]}px;background:${weekend?'#3d4a5d':'#2e3a4d'};color:${weekend?'#ffd9a0':'#fff'};
       display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;border:1px solid #2e3a4d;box-sizing:border-box;">${WDN[d]}</div>`;
   }
   html+=`</div>`;
@@ -1827,7 +1839,8 @@ function buildCleanTimetable(){
 
   // 요일별 컬럼
   for(let d=1;d<=7;d++){
-    html+=`<div style="width:${COLW}px;position:relative;height:${gridH}px;border:1px solid #dde3ea;border-left:none;box-sizing:border-box;background:#fdfdfe;">`;
+    const CW=dayW[d];
+    html+=`<div style="width:${CW}px;position:relative;height:${gridH}px;border:1px solid #dde3ea;border-left:none;box-sizing:border-box;background:#fdfdfe;">`;
     // 시간 눈금선
     for(let t=minTime;t<=maxTime;t+=30){
       const top=(t-minTime)*PXPERMIN;
@@ -1840,15 +1853,15 @@ function buildCleanTimetable(){
       const height=(s.end-s.start)*PXPERMIN;
       const cols=s.cols||1, col=s.col||0;
       const gap=3;
-      const w=(COLW-gap*(cols+1))/cols;
+      const w=(CW-gap*(cols+1))/cols;
       const left=gap+col*(w+gap);
       const col2=subjColor[s.subj]||['#eee','#333'];
-      const compact=height<46;
+      const compact=height<44;
       html+=`<div style="position:absolute;top:${top+1}px;left:${left}px;width:${w}px;height:${height-2}px;
         background:${col2[0]};border:1px solid ${col2[1]}55;border-left:3px solid ${col2[1]};border-radius:4px;
-        padding:${compact?'2px 4px':'4px 6px'};box-sizing:border-box;overflow:hidden;">
-        <div style="font-weight:700;font-size:${compact?'10px':'11.5px'};color:${col2[1]};line-height:1.15;">${escapeHtml(s.title)}</div>
-        ${compact?'':`<div style="font-size:9.5px;color:#556;line-height:1.35;margin-top:1px;">${s.st}~${s.et}<br>${name('instructors',s.inst)} · ${name('rooms',s.room)}</div>`}
+        padding:${compact?'2px 5px':'5px 7px'};box-sizing:border-box;overflow:hidden;">
+        <div style="font-weight:700;font-size:${compact?'10.5px':'12px'};color:${col2[1]};line-height:1.2;">${escapeHtml(s.title)}</div>
+        ${compact?'':`<div style="font-size:10px;color:#556;line-height:1.4;margin-top:2px;">${s.st}~${s.et}<br>${name('instructors',s.inst)} · ${name('rooms',s.room)}</div>`}
       </div>`;
     });
     html+=`</div>`;
