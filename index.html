@@ -1705,195 +1705,20 @@ function exportExcel(kind){
 // ════════ 시간표 PNG 저장 ════════
 async function exportTimetableImg(scale){
   if(typeof html2canvas==='undefined'){alert('이미지 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return;}
+  const el=document.querySelector('.tt-wrap');
+  if(!el){alert('시간표를 찾을 수 없습니다.');return;}
   const btn=document.getElementById('ttImgBtn'); const orig=btn?btn.textContent:'';
   if(btn)btn.textContent='저장 중…';
-  const who = ttFilter==null ? '전체' : ((DB.instructors.find(i=>i.id===ttFilter)||{}).name||'');
-  const today=new Date().toISOString().slice(0,10);
-  // 요일을 두 그룹으로 나눠 2장 저장 (가로 길이 완화 + 잘림 방지)
-  const groups=[
-    {days:[1,2,3],   label:'월-수'},
-    {days:[4,5,6,7], label:'목-일'}
-  ];
   try{
-    for(const g of groups){
-      const el=buildCleanTimetable(g.days);
-      document.body.appendChild(el);
-      const canvas=await html2canvas(el,{scale:scale||2,backgroundColor:'#ffffff'});
-      document.body.removeChild(el);
-      const a=document.createElement('a');
-      a.download=`플래닛아카데미_시간표_${who}_${g.label}_${today}.png`;
-      a.href=canvas.toDataURL('image/png');
-      a.click();
-      await new Promise(r=>setTimeout(r,400)); // 연속 다운로드 간격
-    }
+    const canvas=await html2canvas(el,{scale:scale||2,backgroundColor:'#ffffff',scrollX:0,scrollY:0});
+    const who = ttFilter==null ? '전체' : ((DB.instructors.find(i=>i.id===ttFilter)||{}).name||'');
+    const today=new Date().toISOString().slice(0,10);
+    const a=document.createElement('a');
+    a.download=`플래닛아카데미_시간표_${who}_${today}.png`;
+    a.href=canvas.toDataURL('image/png');
+    a.click();
   }catch(e){alert('이미지 저장 오류: '+e.message);}
   if(btn)btn.textContent=orig;
-}
-// 저장 전용: 분 단위 정밀 시간표 (좌표 기반, 겹치면 좌우 분할)
-function buildCleanTimetable(days){
-  days=days||[1,2,3,4,5,6,7];
-  const flat=conflicts().filter(f=> ttFilter==null ? true : f.course.instructor_id===ttFilter);
-  const toMin=t=>{const[h,m]=(t||'0:0').split(':');return +h*60+ +m;};
-
-  // 세션을 요일별로 모으기 (중복 세션 제거)
-  const seen=new Set();
-  const byDay={1:[],2:[],3:[],4:[],5:[],6:[],7:[]};
-  flat.forEach(f=>{
-    const key=f.course.id+'-'+f.weekday+'-'+f.start_time;
-    if(seen.has(key))return; seen.add(key);
-    byDay[f.weekday].push({
-      cid:f.course.id, title:f.course.title, subj:f.course.subject_id,
-      inst:f.course.instructor_id, room:f.room_id, target:f.course.target_id,
-      start:toMin(f.start_time), end:toMin(f.end_time),
-      st:hhmm(f.start_time), et:hhmm(f.end_time)
-    });
-  });
-
-  // 표시 시간 범위 (지정된 요일들의 세션만 기준, 30분 단위 정렬)
-  const shown=days.reduce((acc,d)=>acc.concat(byDay[d]),[]);
-  const all=[].concat(...Object.values(byDay));
-  const minTime=shown.length?Math.floor(Math.min(...shown.map(s=>s.start))/60)*60:9*60;
-  const maxTime=shown.length?Math.ceil(Math.max(...shown.map(s=>s.end))/60)*60:22*60;
-
-  // 과목별 색상
-  const palette=[
-    ['#e8f0fe','#1a56b0'],['#e6f4ea','#1e7e45'],['#fce8e6','#b3261e'],
-    ['#fef7e0','#8a6d1a'],['#f3e8fd','#6b28b0'],['#e0f7fa','#00695c'],
-    ['#fce4ec','#a01050'],['#e8eaf6','#3a48a0'],['#f1f8e9','#558b2f'],
-    ['#fff3e0','#a1560a'],['#e0f2f1','#00796b'],['#ede7f6','#512da8']
-  ];
-  const subjColor={}; let ci=0;
-  [...new Set(DB.courses.map(c=>c.subject_id))].forEach(sid=>{subjColor[sid]=palette[ci++%palette.length];});
-
-  // 겹침 계산 → 각 세션에 열(col)과 총 열수(cols) 배정
-  function layout(list){
-    list.sort((a,b)=>a.start-b.start||a.end-b.end);
-    // 겹치는 그룹(클러스터)으로 나눔
-    const clusters=[]; let cur=[]; let curEnd=-1;
-    list.forEach(s=>{
-      if(cur.length && s.start>=curEnd){ clusters.push(cur); cur=[]; curEnd=-1; }
-      cur.push(s); curEnd=Math.max(curEnd,s.end);
-    });
-    if(cur.length)clusters.push(cur);
-    clusters.forEach(cl=>{
-      const colEnds=[]; // 각 열의 마지막 end
-      cl.forEach(s=>{
-        let placed=false;
-        for(let k=0;k<colEnds.length;k++){
-          if(s.start>=colEnds[k]){ s.col=k; colEnds[k]=s.end; placed=true; break; }
-        }
-        if(!placed){ s.col=colEnds.length; colEnds.push(s.end); }
-      });
-      const totalCols=colEnds.length;
-      cl.forEach(s=>s.cols=totalCols);
-    });
-  }
-  Object.values(byDay).forEach(layout);
-
-  const WDN=['','월','화','수','목','금','토','일'];
-  const who = ttFilter==null ? '전체 강사' : ((DB.instructors.find(i=>i.id===ttFilter)||{}).name||'')+' 강사';
-  const today=new Date();
-  const dateStr=`${today.getFullYear()}. ${today.getMonth()+1}. ${today.getDate()}`;
-  const dayLabel=days.length===7?'':` (${WDN[days[0]]}~${WDN[days[days.length-1]]})`;
-
-  // ── A3 세로 고정 비율 레이아웃 ──
-  // A3 세로 297×420mm (1:1.414). 폭을 고정하고 요일 칸을 균등 분할.
-  const PAGE_W=1240;               // 전체 이미지 폭(px) — A3 세로 기준
-  const PAD=34;                    // 바깥 여백
-  const HEADER=70;                 // 상단 제목 영역
-  const HEADH=38;                  // 요일 헤더 높이
-  const TIMEW=54;                  // 시간축 폭
-  const innerW=PAGE_W-PAD*2;       // 내용 폭
-  const colW=(innerW-TIMEW)/days.length;   // 요일 칸 폭(균등)
-  const dayW={}; days.forEach(d=>dayW[d]=colW);
-  // 그리드 높이를 A3 세로 비율에 맞춰 결정 (전체 높이 ≈ 폭×1.414)
-  const gridPX=Math.round(PAGE_W*1.414)-PAD*2-HEADER-HEADH-60; // 하단 범례 여유
-  const PXPERMIN=(maxTime>minTime)? gridPX/(maxTime-minTime) : 1;
-  const gridH=gridPX;
-
-  const wrap=document.createElement('div');
-  wrap.style.cssText='position:fixed;left:-9999px;top:0;width:'+PAGE_W+'px;background:#fff;padding:'+PAD+'px;box-sizing:border-box;font-family:'
-    +"'Pretendard','Apple SD Gothic Neo',sans-serif;";
-
-  let html=`<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:6px;">
-      <div style="font-size:26px;font-weight:800;color:#1a1a2e;letter-spacing:-.5px;">플래닛 아카데미 <span style="color:#3a7;">주간 시간표</span><span style="font-size:16px;color:#889;font-weight:600;">${dayLabel}</span></div>
-      <div style="text-align:right;font-size:13px;color:#889;">${who}<br>${dateStr} 기준</div>
-    </div>
-    <div style="height:3px;background:linear-gradient(90deg,#3a7,#7bd);border-radius:2px;margin-bottom:16px;"></div>`;
-
-  // 컨테이너
-  html+=`<div style="position:relative;width:${innerW}px;">`;
-
-  // 요일 헤더
-  html+=`<div style="display:flex;height:${HEADH}px;">`;
-  html+=`<div style="width:${TIMEW}px;background:#2e3a4d;border:1px solid #2e3a4d;"></div>`;
-  days.forEach(d=>{
-    const weekend=d>=6;
-    html+=`<div style="width:${dayW[d]}px;background:${weekend?'#3d4a5d':'#2e3a4d'};color:${weekend?'#ffd9a0':'#fff'};
-      display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;border:1px solid #2e3a4d;box-sizing:border-box;">${WDN[d]}</div>`;
-  });
-  html+=`</div>`;
-
-  // 본체 (시간 눈금 + 요일 컬럼)
-  html+=`<div style="display:flex;position:relative;">`;
-  // 시간 눈금 열
-  html+=`<div style="width:${TIMEW}px;position:relative;height:${gridH}px;background:#f4f6f9;border:1px solid #dde3ea;box-sizing:border-box;">`;
-  for(let t=minTime;t<=maxTime;t+=30){
-    const top=(t-minTime)*PXPERMIN;
-    const isHour=(t%60===0);
-    html+=`<div style="position:absolute;top:${top}px;left:0;right:0;height:0;border-top:1px solid ${isHour?'#c4ccd6':'#e4e9ef'};"></div>`;
-    if(isHour)html+=`<div style="position:absolute;top:${top+2}px;left:0;right:3px;text-align:right;font-size:11px;color:#667;font-weight:600;">${String(t/60).padStart(2,'0')}:00</div>`;
-  }
-  html+=`</div>`;
-
-  // 요일별 컬럼
-  days.forEach(d=>{
-    const CW=dayW[d];
-    html+=`<div style="width:${CW}px;position:relative;height:${gridH}px;border:1px solid #dde3ea;border-left:none;box-sizing:border-box;background:#fdfdfe;">`;
-    // 시간 눈금선
-    for(let t=minTime;t<=maxTime;t+=30){
-      const top=(t-minTime)*PXPERMIN;
-      const isHour=(t%60===0);
-      html+=`<div style="position:absolute;top:${top}px;left:0;right:0;height:0;border-top:1px solid ${isHour?'#e4e9ef':'#f0f3f7'};"></div>`;
-    }
-    // 강좌 블록
-    byDay[d].forEach(s=>{
-      const top=(s.start-minTime)*PXPERMIN;
-      const height=(s.end-s.start)*PXPERMIN;
-      const cols=s.cols||1, col=s.col||0;
-      const gap=3;
-      const w=(CW-gap*(cols+1))/cols;
-      const left=gap+col*(w+gap);
-      const col2=subjColor[s.subj]||['#eee','#333'];
-      const narrow=w<95;                       // 겹쳐서 칸이 좁을 때
-      const compact=height<40 || narrow;        // 상세 생략 조건
-      const titleFS=narrow?9:(compact?10:11.5);
-      const metaFS=narrow?8:9.5;
-      html+=`<div style="position:absolute;top:${top+1}px;left:${left}px;width:${w}px;height:${height-2}px;
-        background:${col2[0]};border:1px solid ${col2[1]}55;border-left:3px solid ${col2[1]};border-radius:4px;
-        padding:${compact?'2px 4px':'4px 6px'};box-sizing:border-box;overflow:hidden;">
-        <div style="font-weight:700;font-size:${titleFS}px;color:${col2[1]};line-height:1.15;">${escapeHtml(s.title)}</div>
-        ${compact?(narrow?`<div style="font-size:${metaFS}px;color:#556;line-height:1.2;">${s.st}</div>`:''):`<div style="font-size:${metaFS}px;color:#556;line-height:1.35;margin-top:1px;">${s.st}~${s.et}<br>${name('instructors',s.inst)} · ${name('rooms',s.room)}</div>`}
-      </div>`;
-    });
-    html+=`</div>`;
-  });
-  html+=`</div></div>`; // 본체 + 컨테이너 닫기
-
-  // 범례
-  const usedSubj=[...new Set(all.map(s=>s.subj))];
-  if(usedSubj.length){
-    html+='<div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:10px 18px;font-size:12px;color:#556;">';
-    usedSubj.forEach(sid=>{
-      const col=subjColor[sid]||['#eee','#333'];
-      html+=`<span style="display:inline-flex;align-items:center;gap:6px;"><i style="width:14px;height:14px;border-radius:3px;background:${col[0]};border:1px solid ${col[1]};display:inline-block;"></i>${name('subjects',sid)}</span>`;
-    });
-    html+='</div>';
-  }
-  html+='<div style="margin-top:12px;text-align:right;font-size:11px;color:#aab;">flanetacademy.com</div>';
-
-  wrap.innerHTML=html;
-  return wrap;
 }
 
 // ════════ 어드민 로그인 + 권한 ════════
