@@ -1721,87 +1721,142 @@ async function exportTimetableImg(scale){
   }catch(e){alert('이미지 저장 오류: '+e.message);}
   if(btn)btn.textContent=orig;
 }
-// 저장 전용: 충돌 색 없이 강좌별 색상으로 깔끔하게 그린 시간표
+// 저장 전용: 분 단위 정밀 시간표 (좌표 기반, 겹치면 좌우 분할)
 function buildCleanTimetable(){
   const flat=conflicts().filter(f=> ttFilter==null ? true : f.course.instructor_id===ttFilter);
-  // 표시 시간 범위 자동 (강좌 있는 시간만)
-  const hrs=flat.map(f=>+f.start_time.split(':')[0]);
-  const endHrs=flat.map(f=>Math.ceil((+f.end_time.split(':')[0])+((+f.end_time.split(':')[1])>0?1:0)));
-  const minH=flat.length?Math.min(...hrs):9;
-  const maxH=flat.length?Math.max(...endHrs):22;
-  // 과목별 파스텔 색상 팔레트
+  const toMin=t=>{const[h,m]=(t||'0:0').split(':');return +h*60+ +m;};
+
+  // 세션을 요일별로 모으기 (중복 세션 제거)
+  const seen=new Set();
+  const byDay={1:[],2:[],3:[],4:[],5:[],6:[],7:[]};
+  flat.forEach(f=>{
+    const key=f.course.id+'-'+f.weekday+'-'+f.start_time;
+    if(seen.has(key))return; seen.add(key);
+    byDay[f.weekday].push({
+      cid:f.course.id, title:f.course.title, subj:f.course.subject_id,
+      inst:f.course.instructor_id, room:f.room_id, target:f.course.target_id,
+      start:toMin(f.start_time), end:toMin(f.end_time),
+      st:hhmm(f.start_time), et:hhmm(f.end_time)
+    });
+  });
+
+  // 표시 시간 범위 (30분 단위로 정렬)
+  const all=[].concat(...Object.values(byDay));
+  const minTime=all.length?Math.floor(Math.min(...all.map(s=>s.start))/60)*60:9*60;
+  const maxTime=all.length?Math.ceil(Math.max(...all.map(s=>s.end))/60)*60:22*60;
+  const PXPERMIN=1.15;              // 1분당 픽셀
+  const gridH=(maxTime-minTime)*PXPERMIN;
+
+  // 과목별 색상
   const palette=[
     ['#e8f0fe','#1a56b0'],['#e6f4ea','#1e7e45'],['#fce8e6','#b3261e'],
     ['#fef7e0','#8a6d1a'],['#f3e8fd','#6b28b0'],['#e0f7fa','#00695c'],
     ['#fce4ec','#a01050'],['#e8eaf6','#3a48a0'],['#f1f8e9','#558b2f'],
     ['#fff3e0','#a1560a'],['#e0f2f1','#00796b'],['#ede7f6','#512da8']
   ];
-  const subjColor={};
-  let ci=0;
+  const subjColor={}; let ci=0;
   [...new Set(DB.courses.map(c=>c.subject_id))].forEach(sid=>{subjColor[sid]=palette[ci++%palette.length];});
+
+  // 겹침 계산 → 각 세션에 열(col)과 총 열수(cols) 배정
+  function layout(list){
+    list.sort((a,b)=>a.start-b.start||a.end-b.end);
+    // 겹치는 그룹(클러스터)으로 나눔
+    const clusters=[]; let cur=[]; let curEnd=-1;
+    list.forEach(s=>{
+      if(cur.length && s.start>=curEnd){ clusters.push(cur); cur=[]; curEnd=-1; }
+      cur.push(s); curEnd=Math.max(curEnd,s.end);
+    });
+    if(cur.length)clusters.push(cur);
+    clusters.forEach(cl=>{
+      const colEnds=[]; // 각 열의 마지막 end
+      cl.forEach(s=>{
+        let placed=false;
+        for(let k=0;k<colEnds.length;k++){
+          if(s.start>=colEnds[k]){ s.col=k; colEnds[k]=s.end; placed=true; break; }
+        }
+        if(!placed){ s.col=colEnds.length; colEnds.push(s.end); }
+      });
+      const totalCols=colEnds.length;
+      cl.forEach(s=>s.cols=totalCols);
+    });
+  }
+  Object.values(byDay).forEach(layout);
 
   const WDN=['','월','화','수','목','금','토','일'];
   const who = ttFilter==null ? '전체 강사' : ((DB.instructors.find(i=>i.id===ttFilter)||{}).name||'')+' 강사';
   const today=new Date();
   const dateStr=`${today.getFullYear()}. ${today.getMonth()+1}. ${today.getDate()}`;
 
-  const wrap=document.createElement('div');
-  wrap.style.cssText='position:fixed;left:-9999px;top:0;width:1100px;background:#fff;padding:32px 36px;font-family:'
-    +"'Pretendard','Apple SD Gothic Neo',sans-serif;box-sizing:border-box;";
+  const COLW=140, TIMEW=58, HEADH=40;
+  const totalW=TIMEW+COLW*7;
 
-  // 헤더
+  const wrap=document.createElement('div');
+  wrap.style.cssText='position:fixed;left:-9999px;top:0;width:'+(totalW+72)+'px;background:#fff;padding:32px 36px;box-sizing:border-box;font-family:'
+    +"'Pretendard','Apple SD Gothic Neo',sans-serif;";
+
   let html=`<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:6px;">
       <div style="font-size:26px;font-weight:800;color:#1a1a2e;letter-spacing:-.5px;">플래닛 아카데미 <span style="color:#3a7;">주간 시간표</span></div>
       <div style="text-align:right;font-size:13px;color:#889;">${who}<br>${dateStr} 기준</div>
     </div>
     <div style="height:3px;background:linear-gradient(90deg,#3a7,#7bd);border-radius:2px;margin-bottom:16px;"></div>`;
 
-  // 표
-  html+='<table style="width:100%;border-collapse:collapse;table-layout:fixed;">';
-  html+='<thead><tr><th style="width:56px;padding:9px 4px;background:#2e3a4d;color:#fff;font-size:13px;border:1px solid #2e3a4d;">시간</th>';
+  // 컨테이너
+  html+=`<div style="position:relative;width:${totalW}px;">`;
+
+  // 요일 헤더
+  html+=`<div style="display:flex;height:${HEADH}px;">`;
+  html+=`<div style="width:${TIMEW}px;background:#2e3a4d;border:1px solid #2e3a4d;"></div>`;
   for(let d=1;d<=7;d++){
     const weekend=d>=6;
-    html+=`<th style="padding:9px 4px;background:${weekend?'#3d4a5d':'#2e3a4d'};color:${weekend?'#ffd9a0':'#fff'};font-size:14px;font-weight:700;border:1px solid #2e3a4d;">${WDN[d]}</th>`;
+    html+=`<div style="width:${COLW}px;background:${weekend?'#3d4a5d':'#2e3a4d'};color:${weekend?'#ffd9a0':'#fff'};
+      display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;border:1px solid #2e3a4d;box-sizing:border-box;">${WDN[d]}</div>`;
   }
-  html+='</tr></thead><tbody>';
+  html+=`</div>`;
 
-  // 각 시간행, 강좌는 시작 시각에 rowspan으로 배치
-  const rendered=new Set();
-  for(let h=minH;h<maxH;h++){
-    html+=`<tr><td style="text-align:center;padding:4px;background:#f4f6f9;color:#667;font-size:12px;font-weight:600;border:1px solid #dde3ea;height:52px;">${String(h).padStart(2,'0')}:00</td>`;
-    for(let d=1;d<=7;d++){
-      const hit=flat.find(f=>f.weekday===d && (+f.start_time.split(':')[0])===h && !rendered.has(f.course.id+'-'+f.weekday+'-'+f.start_time));
-      if(hit){
-        rendered.add(hit.course.id+'-'+hit.weekday+'-'+hit.start_time);
-        const sh=+hit.start_time.split(':')[0], sm=+hit.start_time.split(':')[1];
-        const eh=+hit.end_time.split(':')[0], em=+hit.end_time.split(':')[1];
-        const durH=Math.max(1,Math.round(((eh*60+em)-(sh*60+sm))/60));
-        const col=subjColor[hit.course.subject_id]||['#eee','#333'];
-        html+=`<td rowspan="${durH}" style="border:1px solid #dde3ea;background:${col[0]};padding:7px 8px;vertical-align:top;">
-          <div style="font-weight:700;font-size:13px;color:${col[1]};line-height:1.25;margin-bottom:3px;">${escapeHtml(hit.course.title)}</div>
-          <div style="font-size:11px;color:#556;line-height:1.5;">
-            ${hhmm(hit.start_time)}~${hhmm(hit.end_time)}<br>
-            ${name('instructors',hit.course.instructor_id)} · ${name('rooms',hit.room_id)}<br>
-            <span style="color:#889;">${name('target_groups',hit.course.target_id)}</span>
-          </div></td>`;
-      } else {
-        // rowspan에 덮이는 칸인지 확인
-        const covered=flat.some(f=>{
-          if(f.weekday!==d)return false;
-          const sh=+f.start_time.split(':')[0];
-          const eh=+f.end_time.split(':')[0], em=+f.end_time.split(':')[1];
-          const endBlock=eh+(em>0?1:0);
-          return sh<h && endBlock>h;
-        });
-        if(!covered) html+='<td style="border:1px solid #eef1f5;background:#fdfdfe;"></td>';
-      }
+  // 본체 (시간 눈금 + 요일 컬럼)
+  html+=`<div style="display:flex;position:relative;">`;
+  // 시간 눈금 열
+  html+=`<div style="width:${TIMEW}px;position:relative;height:${gridH}px;background:#f4f6f9;border:1px solid #dde3ea;box-sizing:border-box;">`;
+  for(let t=minTime;t<=maxTime;t+=30){
+    const top=(t-minTime)*PXPERMIN;
+    const isHour=(t%60===0);
+    html+=`<div style="position:absolute;top:${top}px;left:0;right:0;height:0;border-top:1px solid ${isHour?'#c4ccd6':'#e4e9ef'};"></div>`;
+    if(isHour)html+=`<div style="position:absolute;top:${top+2}px;left:0;right:3px;text-align:right;font-size:11px;color:#667;font-weight:600;">${String(t/60).padStart(2,'0')}:00</div>`;
+  }
+  html+=`</div>`;
+
+  // 요일별 컬럼
+  for(let d=1;d<=7;d++){
+    html+=`<div style="width:${COLW}px;position:relative;height:${gridH}px;border:1px solid #dde3ea;border-left:none;box-sizing:border-box;background:#fdfdfe;">`;
+    // 시간 눈금선
+    for(let t=minTime;t<=maxTime;t+=30){
+      const top=(t-minTime)*PXPERMIN;
+      const isHour=(t%60===0);
+      html+=`<div style="position:absolute;top:${top}px;left:0;right:0;height:0;border-top:1px solid ${isHour?'#e4e9ef':'#f0f3f7'};"></div>`;
     }
-    html+='</tr>';
+    // 강좌 블록
+    byDay[d].forEach(s=>{
+      const top=(s.start-minTime)*PXPERMIN;
+      const height=(s.end-s.start)*PXPERMIN;
+      const cols=s.cols||1, col=s.col||0;
+      const gap=3;
+      const w=(COLW-gap*(cols+1))/cols;
+      const left=gap+col*(w+gap);
+      const col2=subjColor[s.subj]||['#eee','#333'];
+      const compact=height<46;
+      html+=`<div style="position:absolute;top:${top+1}px;left:${left}px;width:${w}px;height:${height-2}px;
+        background:${col2[0]};border:1px solid ${col2[1]}55;border-left:3px solid ${col2[1]};border-radius:4px;
+        padding:${compact?'2px 4px':'4px 6px'};box-sizing:border-box;overflow:hidden;">
+        <div style="font-weight:700;font-size:${compact?'10px':'11.5px'};color:${col2[1]};line-height:1.15;">${escapeHtml(s.title)}</div>
+        ${compact?'':`<div style="font-size:9.5px;color:#556;line-height:1.35;margin-top:1px;">${s.st}~${s.et}<br>${name('instructors',s.inst)} · ${name('rooms',s.room)}</div>`}
+      </div>`;
+    });
+    html+=`</div>`;
   }
-  html+='</tbody></table>';
+  html+=`</div></div>`; // 본체 + 컨테이너 닫기
 
-  // 과목 색상 범례
-  const usedSubj=[...new Set(flat.map(f=>f.course.subject_id))];
+  // 범례
+  const usedSubj=[...new Set(all.map(s=>s.subj))];
   if(usedSubj.length){
     html+='<div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:10px 18px;font-size:12px;color:#556;">';
     usedSubj.forEach(sid=>{
@@ -1810,7 +1865,7 @@ function buildCleanTimetable(){
     });
     html+='</div>';
   }
-  html+='<div style="margin-top:14px;text-align:right;font-size:11px;color:#aab;">flanetacademy.com</div>';
+  html+='<div style="margin-top:12px;text-align:right;font-size:11px;color:#aab;">flanetacademy.com</div>';
 
   wrap.innerHTML=html;
   return wrap;
