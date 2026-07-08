@@ -1707,22 +1707,31 @@ async function exportTimetableImg(scale){
   if(typeof html2canvas==='undefined'){alert('이미지 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return;}
   const btn=document.getElementById('ttImgBtn'); const orig=btn?btn.textContent:'';
   if(btn)btn.textContent='저장 중…';
+  const who = ttFilter==null ? '전체' : ((DB.instructors.find(i=>i.id===ttFilter)||{}).name||'');
+  const today=new Date().toISOString().slice(0,10);
+  // 요일을 두 그룹으로 나눠 2장 저장 (가로 길이 완화 + 잘림 방지)
+  const groups=[
+    {days:[1,2,3,4], label:'월-목'},
+    {days:[5,6,7],   label:'금-일'}
+  ];
   try{
-    const el=buildCleanTimetable();       // 저장 전용 깔끔한 시간표 생성
-    document.body.appendChild(el);
-    const canvas=await html2canvas(el,{scale:scale||2,backgroundColor:'#ffffff'});
-    document.body.removeChild(el);
-    const who = ttFilter==null ? '전체' : ((DB.instructors.find(i=>i.id===ttFilter)||{}).name||'');
-    const today=new Date().toISOString().slice(0,10);
-    const a=document.createElement('a');
-    a.download=`플래닛아카데미_시간표_${who}_${today}.png`;
-    a.href=canvas.toDataURL('image/png');
-    a.click();
+    for(const g of groups){
+      const el=buildCleanTimetable(g.days);
+      document.body.appendChild(el);
+      const canvas=await html2canvas(el,{scale:scale||2,backgroundColor:'#ffffff'});
+      document.body.removeChild(el);
+      const a=document.createElement('a');
+      a.download=`플래닛아카데미_시간표_${who}_${g.label}_${today}.png`;
+      a.href=canvas.toDataURL('image/png');
+      a.click();
+      await new Promise(r=>setTimeout(r,400)); // 연속 다운로드 간격
+    }
   }catch(e){alert('이미지 저장 오류: '+e.message);}
   if(btn)btn.textContent=orig;
 }
 // 저장 전용: 분 단위 정밀 시간표 (좌표 기반, 겹치면 좌우 분할)
-function buildCleanTimetable(){
+function buildCleanTimetable(days){
+  days=days||[1,2,3,4,5,6,7];
   const flat=conflicts().filter(f=> ttFilter==null ? true : f.course.instructor_id===ttFilter);
   const toMin=t=>{const[h,m]=(t||'0:0').split(':');return +h*60+ +m;};
 
@@ -1740,10 +1749,11 @@ function buildCleanTimetable(){
     });
   });
 
-  // 표시 시간 범위 (30분 단위로 정렬)
+  // 표시 시간 범위 (지정된 요일들의 세션만 기준, 30분 단위 정렬)
+  const shown=days.reduce((acc,d)=>acc.concat(byDay[d]),[]);
   const all=[].concat(...Object.values(byDay));
-  const minTime=all.length?Math.floor(Math.min(...all.map(s=>s.start))/60)*60:9*60;
-  const maxTime=all.length?Math.ceil(Math.max(...all.map(s=>s.end))/60)*60:22*60;
+  const minTime=shown.length?Math.floor(Math.min(...shown.map(s=>s.start))/60)*60:9*60;
+  const maxTime=shown.length?Math.ceil(Math.max(...shown.map(s=>s.end))/60)*60:22*60;
   const PXPERMIN=1.15;              // 1분당 픽셀
   const gridH=(maxTime-minTime)*PXPERMIN;
 
@@ -1787,19 +1797,20 @@ function buildCleanTimetable(){
   const BASEW=150;    // 겹침 없는 요일 기본 폭
   const dayCols={};   // 요일별 최대 열 수
   const dayW={};      // 요일별 칸 폭
-  for(let d=1;d<=7;d++){
+  days.forEach(d=>{
     const maxC=byDay[d].reduce((mx,s)=>Math.max(mx,s.cols||1),1);
     dayCols[d]=maxC;
     dayW[d]=maxC<=1 ? BASEW : Math.max(BASEW, maxC*MINSUB + (maxC+1)*3);
-  }
+  });
 
   const WDN=['','월','화','수','목','금','토','일'];
   const who = ttFilter==null ? '전체 강사' : ((DB.instructors.find(i=>i.id===ttFilter)||{}).name||'')+' 강사';
   const today=new Date();
   const dateStr=`${today.getFullYear()}. ${today.getMonth()+1}. ${today.getDate()}`;
+  const dayLabel=days.length===7?'':` (${WDN[days[0]]}~${WDN[days[days.length-1]]})`;
 
   const COLW=140, TIMEW=58, HEADH=40;
-  const totalColW=[1,2,3,4,5,6,7].reduce((sum,d)=>sum+dayW[d],0);
+  const totalColW=days.reduce((sum,d)=>sum+dayW[d],0);
   const totalW=TIMEW+totalColW;
 
   const wrap=document.createElement('div');
@@ -1807,7 +1818,7 @@ function buildCleanTimetable(){
     +"'Pretendard','Apple SD Gothic Neo',sans-serif;";
 
   let html=`<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:6px;">
-      <div style="font-size:26px;font-weight:800;color:#1a1a2e;letter-spacing:-.5px;">플래닛 아카데미 <span style="color:#3a7;">주간 시간표</span></div>
+      <div style="font-size:26px;font-weight:800;color:#1a1a2e;letter-spacing:-.5px;">플래닛 아카데미 <span style="color:#3a7;">주간 시간표</span><span style="font-size:16px;color:#889;font-weight:600;">${dayLabel}</span></div>
       <div style="text-align:right;font-size:13px;color:#889;">${who}<br>${dateStr} 기준</div>
     </div>
     <div style="height:3px;background:linear-gradient(90deg,#3a7,#7bd);border-radius:2px;margin-bottom:16px;"></div>`;
@@ -1818,11 +1829,11 @@ function buildCleanTimetable(){
   // 요일 헤더
   html+=`<div style="display:flex;height:${HEADH}px;">`;
   html+=`<div style="width:${TIMEW}px;background:#2e3a4d;border:1px solid #2e3a4d;"></div>`;
-  for(let d=1;d<=7;d++){
+  days.forEach(d=>{
     const weekend=d>=6;
     html+=`<div style="width:${dayW[d]}px;background:${weekend?'#3d4a5d':'#2e3a4d'};color:${weekend?'#ffd9a0':'#fff'};
       display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;border:1px solid #2e3a4d;box-sizing:border-box;">${WDN[d]}</div>`;
-  }
+  });
   html+=`</div>`;
 
   // 본체 (시간 눈금 + 요일 컬럼)
@@ -1838,7 +1849,7 @@ function buildCleanTimetable(){
   html+=`</div>`;
 
   // 요일별 컬럼
-  for(let d=1;d<=7;d++){
+  days.forEach(d=>{
     const CW=dayW[d];
     html+=`<div style="width:${CW}px;position:relative;height:${gridH}px;border:1px solid #dde3ea;border-left:none;box-sizing:border-box;background:#fdfdfe;">`;
     // 시간 눈금선
@@ -1865,7 +1876,7 @@ function buildCleanTimetable(){
       </div>`;
     });
     html+=`</div>`;
-  }
+  });
   html+=`</div></div>`; // 본체 + 컨테이너 닫기
 
   // 범례
