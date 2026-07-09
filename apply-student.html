@@ -216,6 +216,8 @@ function renderLogin(){
           </select>
         </div>
         <div class="field"><label>학부모 연락처 (비밀번호 분실 시 본인확인용)</label><input id="lg_phone" placeholder="010-0000-0000"></div>
+        <div class="field"><label>본인 연락처 (비밀번호 분실 시 확인용)</label><input id="lg_sphone" placeholder="010-0000-0000"></div>
+        <div class="field"><label>학교 <span style="color:#889;font-weight:400;font-size:12px;">(선택 · 7세·성인은 비워두세요)</span></label><input id="lg_school" placeholder="예: 플래닛초등학교"></div>
       `:''}
       <button class="btn" onclick="${isSignup?'doSignup()':'doLogin()'}">${isSignup?'회원가입':'로그인'}</button>
       <button class="btn sec" style="margin-top:8px;" onclick="authMode='${isSignup?'login':'signup'}';renderLogin()">${isSignup?'로그인으로 돌아가기':'회원가입'}</button>
@@ -229,6 +231,8 @@ async function doSignup(){
   const name=document.getElementById('lg_name').value.trim();
   const grade=document.getElementById('lg_grade').value;
   const phone=document.getElementById('lg_phone').value.trim();
+  const sphone=document.getElementById('lg_sphone').value.trim();
+  const school=document.getElementById('lg_school').value.trim();
   if(!lid||lid.length<3){alert('아이디를 3자 이상 입력해 주세요.');return;}
   if(!pw||pw.length<4){alert('비밀번호를 4자 이상 입력해 주세요.');return;}
   if(pw!==pw2){alert('비밀번호가 일치하지 않습니다.');return;}
@@ -241,7 +245,7 @@ async function doSignup(){
     if(dupChk.data===true){alert('이미 사용 중인 아이디입니다.');return;}
     const ph=await hashPw(pw);
     // insert (RLS로 select 반환이 막히므로 결과를 돌려받지 않음)
-    const ins=await sb.from('students').insert({name,grade:+grade,parent_phone:phone||null,login_id:lid,password_hash:ph});
+    const ins=await sb.from('students').insert({name,grade:+grade,parent_phone:phone||null,student_phone:sphone||null,school:school||null,login_id:lid,password_hash:ph});
     if(ins.error){alert('회원가입 오류: '+ins.error.message);return;}
     // 방금 만든 계정으로 바로 로그인(RPC)해서 id 확보
     const res=await sb.rpc('student_login',{p_login_id:lid,p_pw_hash:ph});
