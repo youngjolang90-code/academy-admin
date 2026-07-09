@@ -143,7 +143,7 @@ const tgt=id=>(DB.target_groups.find(x=>x.id===id)||{});
 
 let me=null;
 let selected=new Set();
-let catFilt='0', ageFilt='0';
+let catFilt='0', ageFilt='all';
 let authMode='login'; // 'login' | 'signup'
 
 // 비밀번호 해시 (평문 저장 방지)
@@ -215,9 +215,9 @@ function renderLogin(){
             <option value="13">성인</option>
           </select>
         </div>
-        <div class="field"><label>학부모 연락처 (비밀번호 분실 시 본인확인용)</label><input id="lg_phone" placeholder="010-0000-0000"></div>
-        <div class="field"><label>본인 연락처 (비밀번호 분실 시 확인용)</label><input id="lg_sphone" placeholder="010-0000-0000"></div>
         <div class="field"><label>학교 <span style="color:#889;font-weight:400;font-size:12px;">(선택 · 7세·성인은 비워두세요)</span></label><input id="lg_school" placeholder="예: 플래닛초등학교"></div>
+        <div class="field"><label>연락처 (본인 · 비밀번호 분실 시 확인용)</label><input id="lg_sphone" placeholder="010-0000-0000"></div>
+        <div class="field"><label>학부모 연락처</label><input id="lg_phone" placeholder="010-0000-0000"></div>
       `:''}
       <button class="btn" onclick="${isSignup?'doSignup()':'doLogin()'}">${isSignup?'회원가입':'로그인'}</button>
       <button class="btn sec" style="margin-top:8px;" onclick="authMode='${isSignup?'login':'signup'}';renderLogin()">${isSignup?'로그인으로 돌아가기':'회원가입'}</button>
@@ -426,14 +426,14 @@ function buildMyTimetable(mine){
 function renderCourses(){
   const mine=myCourseIds();
   const subjOpts=`<option value="0">과목 전체</option>`+DB.subjects.map(s=>`<option value="${s.id}" ${catFilt==s.id?'selected':''}>${s.name}</option>`).join('');
-  const ageOpts=`<option value="0">학년 전체</option>`+
+  const ageOpts=`<option value="all" ${ageFilt==='all'?'selected':''}>학년 전체</option>`+
     [['0','7세'],['1','초1'],['2','초2'],['3','초3'],['4','초4'],['5','초5'],['6','초6'],
      ['7','중1'],['8','중2'],['9','중3'],['10','고1'],['11','고2'],['12','고3'],['13','성인']]
     .map(([v,l])=>`<option value="${v}" ${ageFilt===v?'selected':''}>${l}</option>`).join('');
 
   let list=DB.courses.filter(c=>{
     if(catFilt!=='0' && String(c.subject_id)!==String(catFilt)) return false;
-    if(ageFilt!=='0'){ const t=tgt(c.target_id); const g=+ageFilt; if(!(t.grade_from<=g && g<=t.grade_to)) return false; }
+    if(ageFilt!=='all'){ const t=tgt(c.target_id); const g=+ageFilt; if(!(t.grade_from<=g && g<=t.grade_to)) return false; }
     return true;
   });
 
