@@ -449,7 +449,7 @@ function renderCourses(){
     const oc=disabled?'':`onclick="toggle(${c.id},event)"`;
     return `<div class="${cls}">
       <label class="course-main" ${oc}>
-        <input type="checkbox" ${selected.has(c.id)?'checked':''} ${disabled?'disabled':''} ${oc}>
+        <input type="checkbox" ${selected.has(c.id)?'checked':''} ${disabled?'disabled':''} style="pointer-events:none;">
         <div style="flex:1;">
           <div class="ctitle">${c.title} ${tagDone}${tagFull}</div>
           <div class="cmeta"><span class="tag">${nm('subjects',c.subject_id)}</span>${nm('instructors',c.instructor_id)} 강사 · 대상 ${tgt(c.target_id).label||'-'}</div>
@@ -482,7 +482,7 @@ function renderCourses(){
     </div>`;
 }
 function toggle(id,ev){
-  if(ev){ev.stopPropagation(); if(ev.target.tagName==='INPUT'&&ev.type==='click')return;}
+  if(ev)ev.preventDefault();
   const c=DB.courses.find(x=>x.id===id);
   if(!selected.has(id)){
     const clash=clashReason(c);
