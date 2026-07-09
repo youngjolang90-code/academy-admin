@@ -257,6 +257,7 @@ async function doSignup(){
     me={id:s.id,name:s.name,grade:s.grade};
     await loadAll();
   } else { me={id:99,name,grade:+grade}; }
+  saveStuSession();
   selected=new Set(); renderDashboard();
 }
 async function doLogin(){
@@ -273,9 +274,41 @@ async function doLogin(){
     me={id:s.id,name:s.name,grade:s.grade};
     await loadAll();
   } else { me={id:1,name:'미리보기',grade:2}; }
+  saveStuSession();
   selected=new Set(); renderDashboard();
 }
-function logout(){me=null;selected=new Set();renderLogin();}
+function logout(){
+  me=null;selected=new Set();
+  try{ localStorage.removeItem('flanet_student'); }catch(e){}
+  renderLogin();
+}
+// ── 로그인 유지 + 5분 무활동 자동 로그아웃 ──
+const STU_IDLE_MS=10*60*1000;
+function saveStuSession(){
+  if(!me)return;
+  try{ localStorage.setItem('flanet_student',JSON.stringify({me,expire:Date.now()+STU_IDLE_MS})); }catch(e){}
+}
+function touchStuSession(){
+  if(!me)return;
+  try{
+    const o=JSON.parse(localStorage.getItem('flanet_student')||'null');
+    if(o){ o.expire=Date.now()+STU_IDLE_MS; localStorage.setItem('flanet_student',JSON.stringify(o)); }
+  }catch(e){}
+}
+function startStuIdleWatch(){
+  ['click','keydown','mousemove','touchstart','scroll'].forEach(ev=>
+    document.addEventListener(ev,()=>{ if(me) touchStuSession(); },{passive:true}));
+  setInterval(()=>{
+    if(!me)return;
+    try{
+      const o=JSON.parse(localStorage.getItem('flanet_student')||'null');
+      if(!o || !o.expire || Date.now()>=o.expire){
+        alert('10분간 활동이 없어 자동 로그아웃되었습니다.\n다시 로그인해 주세요.');
+        logout();
+      }
+    }catch(e){}
+  },20*1000);
+}
 // 신청 취소 (확정 전에만 가능)
 async function cancelEnroll(enrollId,title){
   const en=DB.enrollments.find(e=>e.id===enrollId);
@@ -549,7 +582,16 @@ function renderDone(results){
 
 (async function(){
   if(LIVE){try{await loadAll();}catch(e){console.warn(e);}}
-  renderLogin();
+  // 저장된 로그인 복원 (5분 이내 활동 있었으면 유지)
+  let saved=null;
+  try{ saved=JSON.parse(localStorage.getItem('flanet_student')||'null'); }catch(e){}
+  if(saved && saved.me && saved.expire && Date.now() < saved.expire){
+    me=saved.me; touchStuSession(); renderDashboard();
+  } else {
+    try{ localStorage.removeItem('flanet_student'); }catch(e){}
+    renderLogin();
+  }
+  startStuIdleWatch(); // 5분 무활동 자동 로그아웃
 })();
 </script>
 </body>
