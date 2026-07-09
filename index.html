@@ -1064,7 +1064,9 @@ function studentDetail(id){
     <div style="background:#fafbf9;border-radius:9px;padding:12px 14px;margin-bottom:14px;">
       <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:13px;">
         <div><span class="muted" style="font-size:11px;">학년</span><br><b>${s.grade!=null?gradeText(s.grade):'-'}</b></div>
+        <div><span class="muted" style="font-size:11px;">학교</span><br><b>${s.school||'-'}</b></div>
         <div><span class="muted" style="font-size:11px;">학부모 연락처</span><br><b>${s.parent_phone||'-'}</b></div>
+        <div><span class="muted" style="font-size:11px;">본인 연락처</span><br><b>${s.student_phone||'-'}</b></div>
         <div><span class="muted" style="font-size:11px;">아이디</span><br><b>${s.login_id||'-'}</b></div>
         <div><span class="muted" style="font-size:11px;">신청 강좌</span><br><b>${enr.length}개</b></div>
       </div>
@@ -1102,12 +1104,16 @@ async function payOneInDetail(enrollId,sid){
 function studentForm(id){
   const s=id?DB.students.find(x=>x.id===id):{};
   openModal(id?'학생 수정':'학생 추가',`
-    <div class="field"><label>이름</label><input id="s_name" value="${s.name||''}"></div>
+    <div class="field"><label>이름</label><input id="s_name" value="${(s.name||'').replace(/"/g,'&quot;')}"></div>
     <div class="grid2">
       <div class="field"><label>학년(초N, 7세=0)</label><input id="s_grade" type="number" value="${s.grade??''}"></div>
+      <div class="field"><label>학교 (선택)</label><input id="s_school" value="${(s.school||'').replace(/"/g,'&quot;')}" placeholder="7세·성인은 비움"></div>
+    </div>
+    <div class="grid2">
       <div class="field"><label>학부모 연락처</label><input id="s_phone" value="${s.parent_phone||''}" placeholder="010-"></div>
+      <div class="field"><label>본인 연락처</label><input id="s_sphone" value="${s.student_phone||''}" placeholder="010-"></div>
     </div>`,
-    async()=>{await save('students',id,{name:val('s_name'),grade:val('s_grade')?+val('s_grade'):null,parent_phone:val('s_phone')});closeModal();renderStudents();});
+    async()=>{await save('students',id,{name:val('s_name'),grade:val('s_grade')?+val('s_grade'):null,parent_phone:val('s_phone'),student_phone:val('s_sphone')||null,school:val('s_school')||null});closeModal();renderStudents();});
 }
 
 // ── 기초자료 ──
@@ -1308,17 +1314,18 @@ async function searchStudentAcct(){
   const r=await sb.rpc('admin_search_students',{p_name:q});
   if(r.error){box.innerHTML='<div class="muted">검색 오류: '+r.error.message+'</div>';return;}
   if(!r.data||!r.data.length){box.innerHTML='<div class="muted">일치하는 학생이 없습니다.</div>';return;}
+  window._acctSearch=r.data; // 수정 시 참조
   box.innerHTML=r.data.map(s=>{
     const enrCount=DB.enrollments.filter(e=>e.student_id===s.id).length;
     return `<div style="border:1px solid var(--line);border-radius:9px;padding:12px;margin-bottom:8px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
         <div>
-          <b style="font-size:15px;">${s.name}</b> <span class="muted">${s.grade!=null?gradeText(s.grade):''}</span>
-          <div class="cmeta" style="font-size:12.5px;">아이디: ${s.login_id||'-'} · 연락처: ${s.parent_phone||'-'} · 수강 ${enrCount}건</div>
+          <b style="font-size:15px;">${s.name}</b> <span class="muted">${s.grade!=null?gradeText(s.grade):''} ${s.school?'· '+s.school:''}</span>
+          <div class="cmeta" style="font-size:12.5px;">아이디: ${s.login_id||'-'} · 학부모: ${s.parent_phone||'-'} · 본인: ${s.student_phone||'-'} · 수강 ${enrCount}건</div>
         </div>
       </div>
       <div class="row-actions" style="margin-top:8px;">
-        <button class="btn sm" onclick="editStudentAcct(${s.id},'${(s.name||'').replace(/'/g,'')}',${s.grade},'${(s.parent_phone||'').replace(/'/g,'')}')">정보 수정</button>
+        <button class="btn sm" onclick="editStudentAcct(${s.id})">정보 수정</button>
         <button class="btn sm" onclick="resetStudentPwById(${s.id},'${(s.name||'').replace(/'/g,'')}')">비번 초기화</button>
         <button class="btn sm ghost" onclick="deleteStudentAcct(${s.id},'${(s.name||'').replace(/'/g,'')}')">삭제</button>
       </div></div>`;
@@ -1331,9 +1338,11 @@ async function resetStudentPwById(id,nm2){
   if(r.error){alert('오류: '+r.error.message);return;}
   alert(`초기화 완료.\n'${nm2}' 학생의 임시 비밀번호: 0000\n로그인 후 변경하도록 안내해 주세요.`);
 }
-function editStudentAcct(id,nm2,grade,phone){
+function editStudentAcct(id){
+  const s=(window._acctSearch||[]).find(x=>x.id===id)||{};
+  const grade=s.grade;
   openModal('학생 정보 수정',`
-    <div class="field"><label>이름</label><input id="es_name" value="${nm2}"></div>
+    <div class="field"><label>이름</label><input id="es_name" value="${(s.name||'').replace(/"/g,'&quot;')}"></div>
     <div class="field"><label>학년</label>
       <select id="es_grade">
         <option value="0" ${grade==0?'selected':''}>7세</option>
@@ -1342,9 +1351,13 @@ function editStudentAcct(id,nm2,grade,phone){
         ${[10,11,12].map(g=>`<option value="${g}" ${grade==g?'selected':''}>고${g-9}</option>`).join('')}
         <option value="13" ${grade==13?'selected':''}>성인</option>
       </select></div>
-    <div class="field"><label>학부모 연락처</label><input id="es_phone" value="${phone}"></div>`,
+    <div class="field"><label>학교 (선택)</label><input id="es_school" value="${(s.school||'').replace(/"/g,'&quot;')}" placeholder="7세·성인은 비움"></div>
+    <div class="grid2">
+      <div class="field"><label>학부모 연락처</label><input id="es_phone" value="${s.parent_phone||''}"></div>
+      <div class="field"><label>본인 연락처</label><input id="es_sphone" value="${s.student_phone||''}"></div>
+    </div>`,
     async()=>{
-      const r=await sb.rpc('admin_update_student',{p_id:id,p_name:val('es_name'),p_grade:+val('es_grade'),p_phone:val('es_phone')});
+      const r=await sb.rpc('admin_update_student',{p_id:id,p_name:val('es_name'),p_grade:+val('es_grade'),p_phone:val('es_phone'),p_school:val('es_school')||null,p_sphone:val('es_sphone')||null});
       if(r.error){alert('수정 오류: '+r.error.message);return;}
       await loadAll(); closeModal(); searchStudentAcct();
     });
