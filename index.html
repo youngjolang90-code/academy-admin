@@ -2043,8 +2043,8 @@ function buildPrettyTimetable(){
       html+=cells.map(f=>{
         const col=subjColor[f.course.subject_id]||['#eee','#333'];
         return `<div style="background:${col[0]};border-left:3px solid ${col[1]};border-radius:4px;padding:3px 5px;margin-bottom:2px;line-height:1.3;">
-          <div style="font-weight:700;font-size:11px;color:${col[1]};">${name('subjects',f.course.subject_id)}</div>
-          <div style="font-size:9.5px;color:#556;">${name('target_groups',f.course.target_id)}<br>${name('instructors',f.course.instructor_id)} 강사<br>${hhmm(f.start_time)}~${hhmm(f.end_time)}<br>${name('rooms',f.room_id)}</div>
+          <div style="font-weight:700;font-size:11px;color:${col[1]};">${name('subjects',f.course.subject_id)} | ${name('target_groups',f.course.target_id)}</div>
+          <div style="font-size:9.5px;color:#556;">${name('instructors',f.course.instructor_id)} 강사<br>${hhmm(f.start_time)}~${hhmm(f.end_time)}<br>${name('rooms',f.room_id)}</div>
         </div>`;
       }).join('');
       html+='</td>';
