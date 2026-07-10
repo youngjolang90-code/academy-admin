@@ -930,7 +930,7 @@ function renderStudents(){
   }).join('');
 
   main.innerHTML=head('학생 관리',`총 ${DB.students.length}명`,
-    `<button class="btn sm" onclick="exportExcel('students')" style="margin-right:6px;">학생 엑셀</button><button class="btn primary" onclick="studentForm()">+ 학생 추가</button>`)+connBanner()+`
+    `<button class="btn sm" onclick="exportExcel('students')" style="margin-right:6px;">학생 엑셀</button><button class="btn sm" onclick="exportExcel('roster')" style="margin-right:6px;">전체 수강생 명단</button><button class="btn primary" onclick="studentForm()">+ 학생 추가</button>`)+connBanner()+`
     <div style="display:flex;gap:8px;margin-bottom:12px;">
       <input id="stuListSearch" placeholder="학생 이름 검색" value="${q.replace(/"/g,'&quot;')}"
         oninput="stuQuery=this.value;renderStudents();document.getElementById('stuListSearch').focus();"
@@ -987,7 +987,7 @@ function renderEnrollments(){
   }
 
   main.innerHTML=head('수강신청 관리','학생을 검색해 신청 강좌와 납부를 관리합니다.',
-    `<button class="btn sm" onclick="exportExcel('enrollments')">신청 엑셀</button>`)+connBanner()+`
+    `<button class="btn sm" onclick="exportExcel('enrollments')" style="margin-right:6px;">신청 엑셀</button><button class="btn sm" onclick="exportExcel('course_roster')">강좌별 수강생 명단</button>`)+connBanner()+`
     <div style="display:flex;gap:8px;margin-bottom:16px;">
       <input id="enrSearch" placeholder="학생 이름 검색" value="${q.replace(/"/g,'&quot;')}"
         oninput="enrQuery=this.value;renderEnrollments();document.getElementById('enrSearch').focus();"
@@ -1848,6 +1848,38 @@ async function backupToSheet(){
         확정:e.confirmed===true?'확정':'미확정'
       };
     }),
+    // 전체 수강생 명단 (등록 확정된 학생 기준, 학생별 신청 강좌 요약)
+    수강생명단:DB.students.map(s=>{
+      const myEnr=DB.enrollments.filter(e=>e.student_id===s.id);
+      const active=myEnr.filter(e=>e.status==='ENROLLED');
+      const courses=active.map(e=>(DB.courses.find(c=>c.id===e.course_id)||{}).title).filter(Boolean);
+      const total=active.reduce((sum,e)=>{const c=DB.courses.find(x=>x.id===e.course_id);return sum+((c&&c.tuition)||0);},0);
+      const unpaid=active.filter(e=>e.payment_status==='UNPAID'||!e.payment_status).length;
+      return {
+        이름:s.name, 학년:s.grade!=null?gradeText(s.grade):'', 학교:s.school||'',
+        본인연락처:s.student_phone||'', 학부모연락처:s.parent_phone||'',
+        수강강좌수:courses.length, 수강강좌:courses.join(', '),
+        수강료합계:total, 미납건수:unpaid
+      };
+    }),
+    // 강좌별 수강생 명단 (강좌 → 그 강좌를 듣는 학생들)
+    강좌별수강생:(()=>{
+      const out=[];
+      DB.courses.forEach(c=>{
+        const rows=DB.enrollments.filter(e=>e.course_id===c.id);
+        if(!rows.length){ out.push({강좌:c.title,과목:name('subjects',c.subject_id),강사:name('instructors',c.instructor_id),학생:'(수강생 없음)',학년:'',상태:'',납부:''}); return; }
+        rows.forEach(e=>{
+          const st=DB.students.find(x=>x.id===e.student_id)||{};
+          out.push({
+            강좌:c.title, 과목:name('subjects',c.subject_id), 강사:name('instructors',c.instructor_id),
+            학생:st.name||'', 학년:st.grade!=null?gradeText(st.grade):'',
+            상태:e.status==='WAITLIST'?'대기':'등록',
+            납부:e.payment_status==='PAID'?'완납':e.payment_status==='REFUNDED'?'환불':'미납'
+          });
+        });
+      });
+      return out;
+    })(),
     subjects:DB.subjects.map(x=>({id:x.id,과목:x.name})),
     instructors:DB.instructors.map(x=>({id:x.id,강사:x.name})),
     rooms:DB.rooms.map(x=>({id:x.id,장소:x.name})),
@@ -1902,6 +1934,35 @@ function exportExcel(kind){
         납부:e.payment_status==='PAID'?'완납':e.payment_status==='REFUNDED'?'환불':'미납',
         확정:e.confirmed===true?'확정':'미확정'
       };
+    });
+  } else if(kind==='roster'){
+    fname='전체수강생명단';
+    rows=DB.students.map(s=>{
+      const active=DB.enrollments.filter(e=>e.student_id===s.id&&e.status==='ENROLLED');
+      const courses=active.map(e=>(DB.courses.find(c=>c.id===e.course_id)||{}).title).filter(Boolean);
+      const total=active.reduce((sum,e)=>{const c=DB.courses.find(x=>x.id===e.course_id);return sum+((c&&c.tuition)||0);},0);
+      const unpaid=active.filter(e=>e.payment_status==='UNPAID'||!e.payment_status).length;
+      return {
+        이름:s.name, 학년:s.grade!=null?gradeText(s.grade):'', 학교:s.school||'',
+        본인연락처:s.student_phone||'', 학부모연락처:s.parent_phone||'',
+        수강강좌수:courses.length, 수강강좌:courses.join(', '), 수강료합계:total, 미납건수:unpaid
+      };
+    });
+  } else if(kind==='course_roster'){
+    fname='강좌별수강생명단';
+    rows=[];
+    DB.courses.forEach(c=>{
+      const ens=DB.enrollments.filter(e=>e.course_id===c.id);
+      if(!ens.length){ rows.push({강좌:c.title,과목:name('subjects',c.subject_id),강사:name('instructors',c.instructor_id),학생:'(수강생 없음)',학년:'',상태:'',납부:''}); return; }
+      ens.forEach(e=>{
+        const st=DB.students.find(x=>x.id===e.student_id)||{};
+        rows.push({
+          강좌:c.title, 과목:name('subjects',c.subject_id), 강사:name('instructors',c.instructor_id),
+          학생:st.name||'', 학년:st.grade!=null?gradeText(st.grade):'',
+          상태:e.status==='WAITLIST'?'대기':'등록',
+          납부:e.payment_status==='PAID'?'완납':e.payment_status==='REFUNDED'?'환불':'미납'
+        });
+      });
     });
   }
   if(!rows.length){alert('내보낼 데이터가 없습니다.');return;}
@@ -1981,9 +2042,9 @@ function buildPrettyTimetable(){
       html+='<td style="border:1px solid #e4e9ef;padding:2px;vertical-align:top;">';
       html+=cells.map(f=>{
         const col=subjColor[f.course.subject_id]||['#eee','#333'];
-        return `<div style="background:${col[0]};border-left:3px solid ${col[1]};border-radius:4px;padding:3px 5px;margin-bottom:2px;line-height:1.25;">
-          <div style="font-weight:700;font-size:11px;color:${col[1]};">${escapeHtml(f.course.title)}</div>
-          <div style="font-size:9.5px;color:#556;">${hhmm(f.start_time)}~${hhmm(f.end_time)}<br>${name('instructors',f.course.instructor_id)} · ${name('rooms',f.room_id)}</div>
+        return `<div style="background:${col[0]};border-left:3px solid ${col[1]};border-radius:4px;padding:3px 5px;margin-bottom:2px;line-height:1.3;">
+          <div style="font-weight:700;font-size:11px;color:${col[1]};">${name('subjects',f.course.subject_id)}</div>
+          <div style="font-size:9.5px;color:#556;">${name('target_groups',f.course.target_id)}<br>${name('instructors',f.course.instructor_id)} 강사<br>${hhmm(f.start_time)}~${hhmm(f.end_time)}<br>${name('rooms',f.room_id)}</div>
         </div>`;
       }).join('');
       html+='</td>';
