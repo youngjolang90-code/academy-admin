@@ -1831,10 +1831,23 @@ async function backupToSheet(){
       주당횟수:c.sessions_per_week, 수강료:c.tuition||'',
       요일시간:(c.sessions||[]).map(s=>`${WD[s.weekday]} ${hhmm(s.start_time)}~${hhmm(s.end_time)} @${name('rooms',s.room_id)}`).join(' / ')
     })),
-    students:DB.students.map(s=>({id:s.id,이름:s.name,학년:s.grade,학부모연락처:s.parent_phone||''})),
-    enrollments:DB.enrollments.map(e=>({id:e.id,
-      학생:name2('students',e.student_id), 강좌:(DB.courses.find(c=>c.id===e.course_id)||{}).title||'',
-      상태:e.status, 결제:e.payment_status})),
+    students:DB.students.map(s=>({id:s.id,이름:s.name,학년:s.grade!=null?gradeText(s.grade):'',학교:s.school||'',본인연락처:s.student_phone||'',학부모연락처:s.parent_phone||''})),
+    enrollments:DB.enrollments.map(e=>{
+      const c=DB.courses.find(x=>x.id===e.course_id)||{};
+      const st=DB.students.find(x=>x.id===e.student_id)||{};
+      return {
+        id:e.id,
+        학생:st.name||'',
+        학년:st.grade!=null?gradeText(st.grade):'',
+        강좌:c.title||'',
+        과목:c.subject_id?name('subjects',c.subject_id):'',
+        강사:c.instructor_id?name('instructors',c.instructor_id):'',
+        수강료:c.tuition||0,
+        상태:e.status==='WAITLIST'?'대기':e.status==='ENROLLED'?'등록':(e.status||''),
+        납부:e.payment_status==='PAID'?'완납':e.payment_status==='REFUNDED'?'환불':'미납',
+        확정:e.confirmed===true?'확정':'미확정'
+      };
+    }),
     subjects:DB.subjects.map(x=>({id:x.id,과목:x.name})),
     instructors:DB.instructors.map(x=>({id:x.id,강사:x.name})),
     rooms:DB.rooms.map(x=>({id:x.id,장소:x.name})),
@@ -1875,12 +1888,21 @@ function exportExcel(kind){
     }));
   } else if(kind==='enrollments'){
     fname='수강신청내역';
-    rows=DB.enrollments.map(e=>({
-      학생:(DB.students.find(s=>s.id===e.student_id)||{}).name||'',
-      강좌:(DB.courses.find(c=>c.id===e.course_id)||{}).title||'',
-      상태:e.status==='WAITLIST'?'대기':e.status==='ENROLLED'?'등록':e.status,
-      결제:e.payment_status==='PAID'?'완납':e.payment_status==='REFUNDED'?'환불':'미납'
-    }));
+    rows=DB.enrollments.map(e=>{
+      const c=DB.courses.find(x=>x.id===e.course_id)||{};
+      const st=DB.students.find(x=>x.id===e.student_id)||{};
+      return {
+        학생:st.name||'',
+        학년:st.grade!=null?gradeText(st.grade):'',
+        강좌:c.title||'',
+        과목:c.subject_id?name('subjects',c.subject_id):'',
+        강사:c.instructor_id?name('instructors',c.instructor_id):'',
+        수강료:c.tuition||0,
+        상태:e.status==='WAITLIST'?'대기':e.status==='ENROLLED'?'등록':(e.status||''),
+        납부:e.payment_status==='PAID'?'완납':e.payment_status==='REFUNDED'?'환불':'미납',
+        확정:e.confirmed===true?'확정':'미확정'
+      };
+    });
   }
   if(!rows.length){alert('내보낼 데이터가 없습니다.');return;}
   const ws=XLSX.utils.json_to_sheet(rows);
