@@ -542,17 +542,30 @@ function doSearch(q){
     html+='<div style="font-weight:700;font-size:13px;margin:14px 0 8px;color:var(--ink-soft);">학생</div>';
     studs.forEach(s=>{
       const myEnr=DB.enrollments.filter(e=>e.student_id===s.id);
+      // 지금 수업 중인 강의 찾기
+      let nowCourse=null;
+      for(const e of myEnr){
+        const c=DB.courses.find(x=>x.id===e.course_id);
+        if(c && nowTeaching(c)){ nowCourse={c,s:nowTeaching(c)}; break; }
+      }
+      const nowBadge=nowCourse
+        ? `<span style="background:#dcefe7;color:#1f6b54;padding:2px 9px;border-radius:20px;font-size:11.5px;font-weight:600;">● 수업 중 · ${nowCourse.c.title} (${name('rooms',nowCourse.s.room_id)})</span>`
+        : `<span style="background:var(--line-soft);color:var(--ink-soft);padding:2px 9px;border-radius:20px;font-size:11.5px;">현재 수업 없음</span>`;
       const courseList=myEnr.map(e=>{
         const c=DB.courses.find(x=>x.id===e.course_id); if(!c)return'';
         const when=(c.sessions||[]).map(x=>`${WD[x.weekday]} ${hhmm(x.start_time)}~${hhmm(x.end_time)}`).join(', ');
         const st=e.status==='WAITLIST'?' <span style="color:var(--full-ink);">[대기]</span>':'';
-        const pay=e.payment_status==='PAID'?'완납':e.payment_status==='REFUNDED'?'환불':'미납';
-        return `<div class="cmeta" style="font-size:12.5px;">· <b>${c.title}</b> — ${name('instructors',c.instructor_id)} 강사 · ${when}${st} <span class="muted">· ${pay}</span></div>`;
+        return `<div class="cmeta" style="font-size:12.5px;">· <b>${c.title}</b> — ${name('instructors',c.instructor_id)} 강사 · ${when}${st}</div>`;
       }).filter(Boolean).join('')||'<div class="muted" style="font-size:12.5px;">신청한 강좌 없음</div>';
       html+=`<div class="card" style="padding:13px;margin-bottom:10px;">
-        <div style="margin-bottom:6px;"><b style="font-size:15px;">${s.name}</b>
-          <span class="muted" style="font-size:12.5px;margin-left:6px;">${s.grade!=null?gradeText(s.grade):''} ${s.parent_phone?'· '+s.parent_phone:''}</span></div>
-        ${courseList}</div>`;
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+          <div><b style="font-size:15px;">${s.name}</b>
+            <span class="muted" style="font-size:12.5px;margin-left:6px;">${s.grade!=null?gradeText(s.grade):''} ${s.school?'· '+s.school:''}</span></div>
+          ${nowBadge}
+        </div>
+        ${courseList}
+        <button class="btn sm" style="margin-top:8px;" onclick="studentTimetable(${s.id})">📅 시간표 자세히 보기</button>
+      </div>`;
     });
   }
 
@@ -572,6 +585,52 @@ function doSearch(q){
   }
 
   box.innerHTML=html||'<div class="empty" style="color:var(--ink-soft);">검색 결과가 없습니다.</div>';
+}
+// 학생 주간 시간표를 모달로 표시
+function studentTimetable(sid){
+  const s=DB.students.find(x=>x.id===sid); if(!s)return;
+  const enr=DB.enrollments.filter(e=>e.student_id===sid);
+  const toMin=t=>{const[h,m]=(t||'0:0').split(':');return +h*60+ +m;};
+  const items=[];
+  enr.forEach(e=>{
+    const c=DB.courses.find(x=>x.id===e.course_id); if(!c)return;
+    (c.sessions||[]).forEach(x=>items.push({
+      wd:x.weekday, start:toMin(x.start_time), end:toMin(x.end_time),
+      title:c.title, room:name('rooms',x.room_id), st:hhmm(x.start_time), et:hhmm(x.end_time),
+      wait:e.status==='WAITLIST'
+    }));
+  });
+  let grid;
+  if(!items.length){
+    grid='<div class="muted" style="padding:20px;text-align:center;">신청한 강좌가 없습니다.</div>';
+  } else {
+    const minH=Math.floor(Math.min(...items.map(i=>i.start))/60);
+    const maxH=Math.ceil(Math.max(...items.map(i=>i.end))/60);
+    const days=[1,2,3,4,5,6,7], DN=['','월','화','수','목','금','토','일'];
+    grid='<table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:520px;"><thead><tr><th style="width:42px;padding:5px;background:#f4f6f9;border:1px solid #e4e9ef;"></th>';
+    days.forEach(d=>grid+=`<th style="padding:6px 3px;background:#2e3a4d;color:#fff;border:1px solid #2e3a4d;font-weight:700;">${DN[d]}</th>`);
+    grid+='</tr></thead><tbody>';
+    for(let h=minH;h<maxH;h++){
+      grid+=`<tr><td style="text-align:center;color:#889;border:1px solid #eef;font-size:10.5px;background:#fafbfc;">${String(h).padStart(2,'0')}시</td>`;
+      days.forEach(d=>{
+        const hit=items.find(i=>i.wd===d && Math.floor(i.start/60)===h);
+        if(hit){
+          const span=Math.max(1,Math.round((hit.end-hit.start)/60));
+          grid+=`<td rowspan="${span}" style="border:1px solid #cfe3d8;background:${hit.wait?'#fff4e0':'#e6f2ec'};color:#1f5b45;padding:4px;vertical-align:top;font-size:10.5px;line-height:1.35;">
+            <b>${hit.title.length>11?hit.title.slice(0,11)+'…':hit.title}</b>${hit.wait?' <span style="color:#a1560a;">[대기]</span>':''}<br>${hit.st}~${hit.et}<br>${hit.room||''}</td>`;
+        } else {
+          const covered=items.some(i=>i.wd===d && i.start<h*60 && i.end>h*60);
+          if(!covered) grid+='<td style="border:1px solid #eef;height:30px;"></td>';
+        }
+      });
+      grid+='</tr>';
+    }
+    grid+='</tbody></table>';
+  }
+  document.getElementById('modal').innerHTML=`<h3>${s.name} <span class="muted" style="font-size:13px;font-weight:400;">주간 시간표</span></h3>
+    <div style="overflow-x:auto;">${grid}</div>
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">닫기</button></div>`;
+  document.getElementById('overlay').classList.add('show');
 }
 function gradeText(g){return g===0?'7세':g<=6?('초'+g):g<=9?('중'+(g-6)):g<=12?('고'+(g-9)):'성인';}
 
@@ -656,22 +715,23 @@ function renderCourses(){
       <td class="muted" style="font-size:12px;white-space:nowrap;">${s}</td>
       <td class="muted" style="white-space:nowrap;">${room}</td>
       <td style="white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;">${c.tuition?c.tuition.toLocaleString()+'원':'-'}</td>
-      <td><div class="row-actions">
+      ${isAdmin()?`<td><div class="row-actions">
         <button class="btn sm" onclick="courseForm(${c.id})">수정</button>
         <button class="btn sm ghost" onclick="del('courses',${c.id})">삭제</button>
-      </div></td></tr>`;
+      </div></td>`:''}</tr>`;
   }).join('');
 
-  const addBtn=selSem
+  const addBtn=isAdmin()?(selSem
     ? `<button class="btn primary" onclick="courseForm(null,${selSem})">+ 이 학기에 강좌 추가</button>`
-    : `<button class="btn primary" onclick="courseForm()">+ 강좌 추가</button>`;
+    : `<button class="btn primary" onclick="courseForm()">+ 강좌 추가</button>`):'';
 
   main.innerHTML=head('강좌 관리',selSemObj?`${selSemObj.name} · ${semCourses.length}개 강좌`:`총 ${DB.courses.length}개 강좌`,
     `<button class="btn sm" onclick="exportExcel('courses')" style="margin-right:6px;">엑셀 저장</button>${addBtn}`)+connBanner()+`
     ${sems.length?`<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">${chips}</div>`:'<p class="muted" style="margin-bottom:12px;">등록된 학기가 없습니다. 기초자료 → 학기에서 먼저 추가하세요.</p>'}
     <div class="card" style="overflow-x:auto;"><table><thead><tr>
-      <th>과목</th><th>강좌명</th><th>강사</th><th>대상</th><th>요일·시간</th><th>장소</th><th style="text-align:right;">수강료</th><th></th>
-    </tr></thead><tbody>${rows||`<tr><td colspan="8" class="empty">${selSemObj?selSemObj.name+'에 강좌가 없습니다.':'강좌가 없습니다.'}</td></tr>`}</tbody></table></div>`;
+      <th>과목</th><th>강좌명</th><th>강사</th><th>대상</th><th>요일·시간</th><th>장소</th><th style="text-align:right;">수강료</th>${isAdmin()?'<th></th>':''}
+    </tr></thead><tbody>${rows||`<tr><td colspan="${isAdmin()?8:7}" class="empty">${selSemObj?selSemObj.name+'에 강좌가 없습니다.':'강좌가 없습니다.'}</td></tr>`}</tbody></table></div>
+    ${!isAdmin()?'<p class="muted" style="font-size:12px;margin-top:10px;">강좌 등록·수정·삭제는 관리자만 할 수 있습니다.</p>':''}`;
 }
 // 선택+직접입력 겸용 칸 + 자동완성 목록 생성
 function combo(inputId,arr,curId,lbl){
@@ -1499,7 +1559,7 @@ async function createTeacherAcct(){
 }
 
 function renderMaster(){
-  const tabs=[['subjects','과목'],['instructors','강사'],['rooms','장소'],['target_groups','대상그룹'],['semesters','학기']];
+  const tabs=[['subjects','과목'],['instructors','강사'],['rooms','장소'],['target_groups','대상그룹'],['semesters','학기'],['schools','학교']];
   const t=masterTab;
   let cols,rows;
   if(t==='semesters'){
@@ -1693,6 +1753,24 @@ async function del(table,id){
     } else {
       DB.enrollments=DB.enrollments.filter(e=>e.course_id!==id);
       DB.courses=DB.courses.filter(x=>x.id!==id);
+    }
+    render(); return;
+  }
+  // 학교 삭제 시엔 그 학교의 학사일정도 함께 정리
+  if(table==='schools'){
+    const evCount=(DB.school_events||[]).filter(e=>e.school_id===id).length;
+    const msg=evCount>0
+      ? `이 학교에 등록된 학사일정 ${evCount}건이 있습니다.\n학교와 관련 일정을 모두 삭제할까요?`
+      : '이 학교를 삭제할까요?';
+    if(!confirm(msg))return;
+    if(LIVE){
+      await sb.from('school_events').delete().eq('school_id',id);
+      const{error}=await sb.from('schools').delete().eq('id',id);
+      if(error){alert('삭제 오류: '+error.message);return;}
+      await loadAll();
+    } else {
+      DB.school_events=(DB.school_events||[]).filter(e=>e.school_id!==id);
+      DB.schools=DB.schools.filter(x=>x.id!==id);
     }
     render(); return;
   }
