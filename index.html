@@ -2036,15 +2036,16 @@ function buildPrettyTimetable(){
   html+='</tr></thead><tbody>';
 
   for(let h=minH;h<maxH;h++){
-    html+=`<tr><td style="text-align:center;padding:2px;background:#f4f6f9;color:#667;font-size:11.5px;font-weight:600;border:1px solid #dde3ea;height:56px;vertical-align:top;">${String(h).padStart(2,'0')}:00</td>`;
+    html+=`<tr><td style="text-align:center;padding:2px;background:#f4f6f9;color:#667;font-size:11.5px;font-weight:600;border:1px solid #dde3ea;height:60px;vertical-align:top;">${String(h).padStart(2,'0')}:00</td>`;
     for(let d=1;d<=7;d++){
       const cells=flat.filter(f=>f.weekday===d && (+f.start_time.split(':')[0])===h);
       html+='<td style="border:1px solid #e4e9ef;padding:2px;vertical-align:top;">';
       html+=cells.map(f=>{
         const col=subjColor[f.course.subject_id]||['#eee','#333'];
-        return `<div style="background:${col[0]};border-left:3px solid ${col[1]};border-radius:4px;padding:3px 5px;margin-bottom:2px;line-height:1.3;">
-          <div style="font-weight:700;font-size:11px;color:${col[1]};">${name('subjects',f.course.subject_id)} | ${name('target_groups',f.course.target_id)}</div>
-          <div style="font-size:9.5px;color:#556;">${name('instructors',f.course.instructor_id)} 강사<br>${hhmm(f.start_time)}~${hhmm(f.end_time)}<br>${name('rooms',f.room_id)}</div>
+        return `<div style="background:${col[0]};border-left:3px solid ${col[1]};border-radius:5px;padding:4px 6px;margin-bottom:3px;line-height:1.35;">
+          <div style="font-size:9px;color:${col[1]};font-weight:600;opacity:.85;">${hhmm(f.start_time)}~${hhmm(f.end_time)}</div>
+          <div style="font-weight:700;font-size:11.5px;color:${col[1]};margin:1px 0;">${name('subjects',f.course.subject_id)} <span style="opacity:.6;">|</span> ${name('target_groups',f.course.target_id)}</div>
+          <div style="font-size:9.5px;color:#667;">${name('instructors',f.course.instructor_id)} · ${name('rooms',f.room_id)}</div>
         </div>`;
       }).join('');
       html+='</td>';
