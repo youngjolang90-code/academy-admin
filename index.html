@@ -844,7 +844,16 @@ function courseForm(id,semId){
       <div class="field"><label>수강료(원)</label><input id="f_tuition" type="number" value="${c.tuition||''}" placeholder="예: 80000"></div>
     </div>
     <div class="field"><label>정원(명) · 비우면 제한 없음</label><input id="f_capacity" type="number" value="${c.capacity||''}" placeholder="예: 10"></div>
-    <div class="field"><label>커리큘럼 이미지 주소(URL) · 선택</label><input id="f_curri_url" value="${(c.curriculum_url||'').replace(/"/g,'&quot;')}" placeholder="https://... .png/.jpg"></div>
+    <div class="field"><label>커리큘럼 이미지 · 선택</label>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+        <input type="file" id="f_curri_file" accept="image/*" onchange="uploadCurriImg(this)"
+          style="flex:1;padding:6px;border:1px solid var(--line);border-radius:8px;font-size:12.5px;background:#fff;">
+        <span id="f_curri_status" class="muted" style="font-size:11.5px;white-space:nowrap;"></span>
+      </div>
+      <input id="f_curri_url" value="${(c.curriculum_url||'').replace(/"/g,'&quot;')}" placeholder="이미지를 올리거나 주소를 직접 붙여넣기">
+      <div id="f_curri_preview" style="margin-top:8px;">${c.curriculum_url?`<img src="${c.curriculum_url}" style="max-width:100%;max-height:150px;border-radius:8px;border:1px solid var(--line);">`:''}</div>
+      <div class="muted" style="font-size:11px;margin-top:4px;">※ 파일을 선택하면 자동으로 업로드되고 주소가 채워집니다.</div>
+    </div>
     <div class="field"><label>커리큘럼 설명 · 선택</label><textarea id="f_curri_text" rows="3" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13.5px;font-family:inherit;" placeholder="수업 내용·주차별 계획 등">${c.curriculum_text||''}</textarea></div>
     <div class="field"><label>요일 · 시간 · 장소</label>
       <div id="sessBox">${sessions.map(sessRow).join('')}</div>
@@ -890,6 +899,40 @@ function courseForm(id,semId){
   document.getElementById('addSess').onclick=()=>{
     document.getElementById('sessBox').insertAdjacentHTML('beforeend',sessRow({}));
   };
+}
+// 커리큘럼 이미지 업로드 (Supabase Storage → 공개 URL 자동 입력)
+async function uploadCurriImg(input){
+  const file=input.files&&input.files[0]; if(!file)return;
+  const status=document.getElementById('f_curri_status');
+  const urlBox=document.getElementById('f_curri_url');
+  const preview=document.getElementById('f_curri_preview');
+  if(!LIVE){ if(status)status.textContent='샘플 모드에서는 업로드 불가'; return; }
+  // 용량 체크 (5MB)
+  if(file.size > 5*1024*1024){
+    alert('이미지가 너무 큽니다 (5MB 이하로 올려주세요).');
+    input.value=''; return;
+  }
+  if(status){status.textContent='업로드 중…'; status.style.color='var(--ink-soft)';}
+  try{
+    // 파일명: 시간+임의값 (한글·공백 파일명 문제 방지)
+    const ext=(file.name.split('.').pop()||'png').toLowerCase().replace(/[^a-z0-9]/g,'');
+    const path=`course_${Date.now()}_${Math.random().toString(36).slice(2,7)}.${ext||'png'}`;
+    const{error}=await sb.storage.from('curriculum').upload(path,file,{cacheControl:'3600',upsert:false});
+    if(error){
+      if(status){status.textContent='실패';status.style.color='#a32d2d';}
+      alert('업로드 오류: '+error.message
+        +'\n\n확인할 점:\n1) Supabase → Storage에 "curriculum" 버킷이 있는지\n2) Public bucket으로 되어 있는지\n3) 권한 SQL을 실행했는지');
+      return;
+    }
+    const{data}=sb.storage.from('curriculum').getPublicUrl(path);
+    const publicUrl=data.publicUrl;
+    if(urlBox)urlBox.value=publicUrl;
+    if(preview)preview.innerHTML=`<img src="${publicUrl}" style="max-width:100%;max-height:150px;border-radius:8px;border:1px solid var(--line);">`;
+    if(status){status.textContent='✓ 업로드 완료';status.style.color='#1f6b54';}
+  }catch(e){
+    if(status){status.textContent='실패';status.style.color='#a32d2d';}
+    alert('업로드 중 오류: '+e.message);
+  }
 }
 // 이름으로 마스터 항목을 찾거나 새로 만들어 id 반환 (장소 등)
 async function resolveIdByName(arr,raw){
