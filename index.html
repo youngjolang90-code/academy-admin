@@ -1013,11 +1013,14 @@ function enrollCard(s){
     const payBtn=ps==='UNPAID'
       ? `<button class="btn sm" onclick="payOneEnr(${e.id})">완납</button>`
       : (ps==='PAID'?`<button class="btn sm ghost" onclick="setPayEnr(${e.id},'UNPAID')">미납전환</button>`:'');
+    const delBtn=isAdmin()
+      ? `<button class="btn sm ghost" style="color:#a32d2d;" onclick="delEnrollment(${e.id})" title="신청 취소">신청취소</button>`
+      : '';
     return `<tr>
       <td><b>${c.title}</b>${wait}<div class="cmeta" style="font-size:11.5px;">${name('subjects',c.subject_id)} · ${name('instructors',c.instructor_id)} · ${when||'-'}</div></td>
       <td style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;">${tui?tui.toLocaleString()+'원':'-'}</td>
       <td style="white-space:nowrap;"><span style="font-weight:600;color:${pay[1]};">${pay[0]}</span></td>
-      <td onclick="event.stopPropagation()"><div class="row-actions">${payBtn}</div></td>
+      <td onclick="event.stopPropagation()"><div class="row-actions">${payBtn}${delBtn}</div></td>
     </tr>`;
   }).filter(Boolean).join('')||'<tr><td colspan="4" class="empty">신청한 강좌가 없습니다.</td></tr>';
 
@@ -1041,6 +1044,26 @@ function enrollCard(s){
     </div></div>`;
 }
 
+// 관리자 직권 신청 취소 (수강신청 내역 삭제)
+async function delEnrollment(enrollId){
+  if(!isAdmin()){alert('관리자만 신청을 취소할 수 있습니다.');return;}
+  const e=DB.enrollments.find(x=>x.id===enrollId); if(!e)return;
+  const st=DB.students.find(x=>x.id===e.student_id)||{};
+  const c=DB.courses.find(x=>x.id===e.course_id)||{};
+  const paid=e.payment_status==='PAID';
+  const msg=`'${st.name||'학생'}' 학생의 신청을 취소할까요?\n\n강좌: ${c.title||'-'}\n납부: ${paid?'완납':'미납'}\n\n`
+    +(paid?'※ 이미 완납된 건입니다. 환불 처리는 별도로 진행해 주세요.\n\n':'')
+    +'이 신청 내역이 삭제됩니다.';
+  if(!confirm(msg))return;
+  if(LIVE){
+    const{error}=await sb.from('enrollments').delete().eq('id',enrollId);
+    if(error){alert('취소 오류: '+error.message);return;}
+    await loadAll();
+  } else {
+    DB.enrollments=DB.enrollments.filter(x=>x.id!==enrollId);
+  }
+  renderEnrollments();
+}
 // 수강신청 관리: 강좌 하나 완납/전환
 async function payOneEnr(enrollId){ await setPayEnr(enrollId,'PAID'); }
 async function setPayEnr(enrollId,status){
@@ -1771,6 +1794,42 @@ async function del(table,id){
     } else {
       DB.school_events=(DB.school_events||[]).filter(e=>e.school_id!==id);
       DB.schools=DB.schools.filter(x=>x.id!==id);
+    }
+    render(); return;
+  }
+  // 강사 삭제 시엔 강좌 연결·강사 계정을 먼저 정리
+  if(table==='instructors'){
+    const linkedCourses=DB.courses.filter(c=>c.instructor_id===id);
+    let msg='';
+    if(linkedCourses.length){
+      msg=`이 강사가 담당한 강좌 ${linkedCourses.length}개가 있습니다.\n`
+        +linkedCourses.slice(0,5).map(c=>'· '+c.title).join('\n')
+        +(linkedCourses.length>5?`\n… 외 ${linkedCourses.length-5}개`:'')
+        +`\n\n강사를 삭제하면 해당 강좌의 담당 강사가 '없음'이 됩니다.\n(강좌 자체는 삭제되지 않습니다)\n\n계속할까요?`;
+    } else {
+      msg='이 강사를 삭제할까요?\n(연결된 강사 로그인 계정이 있으면 함께 삭제됩니다)';
+    }
+    if(!confirm(msg))return;
+    if(LIVE){
+      // 1) 강좌-강사 연결 해제
+      await sb.from('course_instructors').delete().eq('instructor_id',id);
+      // 2) 이 강사와 연결된 어드민(강사) 계정 삭제
+      try{
+        const accs=await sb.from('admin_users').select('id,login_id').eq('instructor_id',id);
+        if(accs.data && accs.data.length){
+          for(const a of accs.data){
+            if(a.login_id==='admin') continue; // 최고관리자 계정은 보호
+            await sb.rpc('admin_delete_admin',{p_id:a.id});
+          }
+        }
+      }catch(err){ console.warn('강사 계정 정리 건너뜀:',err); }
+      // 3) 강사 삭제
+      const{error}=await sb.from('instructors').delete().eq('id',id);
+      if(error){alert('삭제 오류: '+error.message+'\n\n강사와 연결된 다른 데이터가 있을 수 있습니다.');return;}
+      await loadAll();
+    } else {
+      DB.courses.forEach(c=>{ if(c.instructor_id===id) c.instructor_id=null; });
+      DB.instructors=DB.instructors.filter(x=>x.id!==id);
     }
     render(); return;
   }
