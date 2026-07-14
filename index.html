@@ -1512,7 +1512,10 @@ async function renderAccounts(){
     </div>
     <div class="card" style="margin-bottom:22px;padding:16px;">
       <div style="font-weight:600;margin-bottom:10px;">➕ 강사 계정 만들기</div>
-      <div class="grid2" style="margin-bottom:8px;">
+      ${DB.instructors.length===0
+        ? `<div class="banner" style="margin-bottom:0;">등록된 강사가 없습니다. 먼저 <b>기초자료 → 강사</b>에서 강사를 추가한 뒤 계정을 만들어 주세요.
+             <button class="btn sm" style="margin-left:8px;" onclick="masterTab='instructors';setView('master')">기초자료로 이동</button></div>`
+        : `<div class="grid2" style="margin-bottom:8px;">
         <input id="ta_id" placeholder="강사 로그인 아이디" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;">
         <input id="ta_pw" placeholder="초기 비밀번호" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;">
       </div>
@@ -1521,12 +1524,62 @@ async function renderAccounts(){
           <option value="">강사 선택</option>
           ${DB.instructors.map(i=>`<option value="${i.id}">${i.name}</option>`).join('')}
         </select>
+        <div class="muted" style="font-size:11px;margin-top:4px;">※ 목록에 없으면 기초자료 → 강사에서 먼저 추가하세요.</div>
       </div>
-      <button class="btn primary" onclick="createTeacherAcct()">강사 계정 생성</button>
+      <button class="btn primary" onclick="createTeacherAcct()">강사 계정 생성</button>`}
     </div>
     <div style="font-weight:600;margin-bottom:8px;">현재 어드민 계정</div>
-    <div class="card"><table><thead><tr><th>이름</th><th>아이디</th><th>권한</th><th>담당강사</th><th></th></tr></thead>
-    <tbody>${acctRows||'<tr><td colspan="5" class="empty">계정이 없습니다.</td></tr>'}</tbody></table></div>`;
+    <div class="card" style="margin-bottom:22px;"><table><thead><tr><th>이름</th><th>아이디</th><th>권한</th><th>담당강사</th><th></th></tr></thead>
+    <tbody>${acctRows||'<tr><td colspan="5" class="empty">계정이 없습니다.</td></tr>'}</tbody></table></div>
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px;">
+      <div style="font-weight:600;">🔓 로그인 이력 <span class="muted" style="font-size:12px;font-weight:400;">(최근 100건)</span></div>
+      <div style="display:flex;gap:6px;">
+        <button class="btn sm" onclick="loadLoginLogs()">새로고침</button>
+        <button class="btn sm ghost" onclick="clearLoginLogs()">이력 비우기</button>
+      </div>
+    </div>
+    <div class="card" id="loginLogBox"><div class="empty" style="padding:20px;">불러오는 중…</div></div>`;
+  loadLoginLogs();
+}
+// 로그인 이력 불러오기
+async function loadLoginLogs(){
+  const box=document.getElementById('loginLogBox'); if(!box)return;
+  if(!LIVE){box.innerHTML='<div class="empty" style="padding:20px;">샘플 모드에서는 표시되지 않습니다.</div>';return;}
+  try{
+    const r=await sb.from('login_logs').select('*').order('logged_at',{ascending:false}).limit(100);
+    if(r.error){
+      box.innerHTML='<div class="empty" style="padding:20px;">이력을 불러올 수 없습니다.<br><span style="font-size:12px;">'
+        +'로그인이력_테이블.sql 을 Supabase에서 실행했는지 확인해 주세요.</span></div>';
+      return;
+    }
+    if(!r.data||!r.data.length){box.innerHTML='<div class="empty" style="padding:20px;">아직 기록된 로그인 이력이 없습니다.</div>';return;}
+    const TYPE={ADMIN:'관리자',TEACHER:'강사',STUDENT:'학생'};
+    const rows=r.data.map(l=>{
+      const dt=new Date(l.logged_at);
+      const when=`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')} `
+        +`${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+      const ok=l.success!==false;
+      return `<tr>
+        <td class="muted" style="white-space:nowrap;font-size:12px;">${when}</td>
+        <td><span class="tag" style="background:${l.user_type==='ADMIN'?'#e8f0fe':l.user_type==='TEACHER'?'#e6f4ea':'#fef7e0'};color:${l.user_type==='ADMIN'?'#1a56b0':l.user_type==='TEACHER'?'#1e7e45':'#8a6d1a'};">${TYPE[l.user_type]||l.user_type}</span></td>
+        <td><b>${l.user_name||'-'}</b></td>
+        <td class="muted">${l.login_id||'-'}</td>
+        <td><span style="font-weight:600;color:${ok?'#1f6b54':'#a32d2d'};">${ok?'성공':'실패'}</span></td>
+      </tr>`;
+    }).join('');
+    box.innerHTML=`<table><thead><tr><th>일시</th><th>구분</th><th>이름</th><th>아이디</th><th>결과</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }catch(e){
+    box.innerHTML='<div class="empty" style="padding:20px;">오류: '+e.message+'</div>';
+  }
+}
+// 로그인 이력 전체 삭제
+async function clearLoginLogs(){
+  if(!confirm('로그인 이력을 모두 삭제할까요?\n(계정 자체는 삭제되지 않습니다)'))return;
+  if(!LIVE){alert('샘플 모드에서는 동작하지 않습니다.');return;}
+  const r=await sb.from('login_logs').delete().neq('id',0);
+  if(r.error){alert('삭제 오류: '+r.error.message);return;}
+  loadLoginLogs();
 }
 // 학생 이름 검색 → 결과 카드에 수정/초기화/삭제 버튼
 async function searchStudentAcct(){
@@ -2240,6 +2293,16 @@ function renderLoginGate(){
       </div>
     </div>`;
 }
+// 로그인 이력 기록
+async function logLogin(type,userId,loginId,userName,success){
+  if(!LIVE)return;
+  try{
+    await sb.from('login_logs').insert({
+      user_type:type, user_id:userId||null, login_id:loginId||null,
+      user_name:userName||null, success:!!success
+    });
+  }catch(e){ console.warn('로그인 기록 실패:',e); }
+}
 async function adminLogin(){
   const lid=document.getElementById('ad_id').value.trim();
   const pw=document.getElementById('ad_pw').value;
@@ -2247,9 +2310,13 @@ async function adminLogin(){
   if(LIVE){
     const ph=await hashPw(pw);
     const res=await sb.from('admin_users').select('*, admin_roles(code)').eq('login_id',lid).eq('password_hash',ph);
-    if(!res.data||!res.data.length){alert('아이디 또는 비밀번호가 올바르지 않습니다.');return;}
+    if(!res.data||!res.data.length){
+      await logLogin('ADMIN',null,lid,null,false); // 실패 기록
+      alert('아이디 또는 비밀번호가 올바르지 않습니다.');return;
+    }
     const u=res.data[0];
     currentAdmin={id:u.id,name:u.name,role:u.admin_roles?u.admin_roles.code:'TEACHER',instructor_id:u.instructor_id};
+    await logLogin(currentAdmin.role==='SUPER_ADMIN'?'ADMIN':'TEACHER',u.id,lid,u.name,true);
   } else {
     currentAdmin={id:1,name:'관리자(샘플)',role:'SUPER_ADMIN',instructor_id:null};
   }
