@@ -139,6 +139,12 @@ let DB={
     {id:3,student_id:99,course_id:1,status:'ENROLLED',payment_status:'UNPAID'}]
 };
 const nm=(arr,id)=>(DB[arr].find(x=>x.id===id)||{}).name||'-';
+// 강좌의 강사 이름들 (여러 명이면 쉼표로)
+function instNames(c){
+  const ids=(c&&c.instructor_ids&&c.instructor_ids.length)?c.instructor_ids:(c&&c.instructor_id?[c.instructor_id]:[]);
+  if(!ids.length)return '강사 미정';
+  return ids.map(id=>nm('instructors',id)).join(', ')+' 강사';
+}
 const tgt=id=>(DB.target_groups.find(x=>x.id===id)||{});
 
 let me=null;
@@ -165,8 +171,10 @@ async function loadAll(){
   if(cs.data&&ci.data){
     DB.courses.forEach(c=>{
       c.sessions=cs.data.filter(s=>s.course_id===c.id);
-      const link=ci.data.find(x=>x.course_id===c.id);
-      c.instructor_id=link?link.instructor_id:c.instructor_id;
+      const links=ci.data.filter(x=>x.course_id===c.id);
+      links.sort((a,b)=>(b.is_primary?1:0)-(a.is_primary?1:0));
+      c.instructor_ids=links.map(x=>x.instructor_id);
+      c.instructor_id=c.instructor_ids.length?c.instructor_ids[0]:c.instructor_id;
     });
   }
 }
@@ -371,7 +379,7 @@ function renderDashboard(){
     return `<div class="db-cls ${live?'on':''}">
       <div style="flex:1;">
         <div style="font-weight:600;">${nm('subjects',t.en.course.subject_id)} · ${t.en.course.title}</div>
-        <div class="cmeta">${hhmm(t.s.start_time)}~${hhmm(t.s.end_time)} · ${nm('rooms',t.s.room_id)} · ${nm('instructors',t.en.course.instructor_id)} 강사</div>
+        <div class="cmeta">${hhmm(t.s.start_time)}~${hhmm(t.s.end_time)} · ${nm('rooms',t.s.room_id)} · ${instNames(t.en.course)}</div>
       </div>${badge}</div>`;
   }).join('') : '<div class="muted" style="padding:6px 2px;">오늘 예정된 수업이 없습니다. 🎉</div>';
 
@@ -392,7 +400,7 @@ function renderDashboard(){
       ? '<span class="muted" style="font-size:11.5px;">확정됨 · 취소는 학원 문의</span>'
       : `<button class="db-cancel" onclick="cancelEnroll(${en.id},'${(en.course.title||'').replace(/'/g,'')}')">신청 취소</button>`;
     return `<div class="db-row" style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-      <div style="flex:1;"><b>${en.course.title}</b> ${st}${badge}<div class="cmeta">${nm('subjects',en.course.subject_id)} · ${nm('instructors',en.course.instructor_id)} 강사 · ${when}</div></div>
+      <div style="flex:1;"><b>${en.course.title}</b> ${st}${badge}<div class="cmeta">${nm('subjects',en.course.subject_id)} · ${instNames(en.course)} · ${when}</div></div>
       <div>${cancelBtn}</div>
     </div>`;
   }).join('') : '<div class="muted" style="padding:6px 2px;">아직 신청한 강좌가 없습니다.</div>';
@@ -503,7 +511,7 @@ function renderCourses(){
         <input type="checkbox" ${selected.has(c.id)?'checked':''} ${disabled?'disabled':''} style="pointer-events:none;">
         <div style="flex:1;">
           <div class="ctitle">${c.title} ${tagDone}${tagFull}</div>
-          <div class="cmeta"><span class="tag">${nm('subjects',c.subject_id)}</span>${nm('instructors',c.instructor_id)} 강사 · 대상 ${tgt(c.target_id).label||'-'}</div>
+          <div class="cmeta"><span class="tag">${nm('subjects',c.subject_id)}</span>${instNames(c)} · 대상 ${tgt(c.target_id).label||'-'}</div>
           <div class="cmeta">${when}${room?' · '+room:''}${c.tuition?' · '+c.tuition.toLocaleString()+'원':''}</div>
           <div class="cmeta">${seatTxt}</div>
         </div>
