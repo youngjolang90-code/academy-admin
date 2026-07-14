@@ -1854,21 +1854,30 @@ async function del(table,id){
     }
     if(!confirm(msg))return;
     if(LIVE){
-      // 1) 강좌-강사 연결 해제
+      // 1) 강좌-강사 연결 테이블 삭제 (courses에는 instructor_id 컬럼이 없는 구조)
       await sb.from('course_instructors').delete().eq('instructor_id',id);
-      // 2) 이 강사와 연결된 어드민(강사) 계정 삭제
+      // 2) 이 강사와 연결된 강사 로그인 계정 삭제
       try{
         const accs=await sb.from('admin_users').select('id,login_id').eq('instructor_id',id);
         if(accs.data && accs.data.length){
           for(const a of accs.data){
-            if(a.login_id==='admin') continue; // 최고관리자 계정은 보호
-            await sb.rpc('admin_delete_admin',{p_id:a.id});
+            if(a.login_id==='admin') continue; // 최고관리자 보호
+            const r=await sb.from('admin_users').delete().eq('id',a.id);
+            if(r.error){ // 직접 삭제가 막히면 RPC로 재시도
+              try{ await sb.rpc('admin_delete_admin',{p_id:a.id}); }catch(e2){}
+            }
           }
         }
-      }catch(err){ console.warn('강사 계정 정리 건너뜀:',err); }
+      }catch(err){ console.warn('강사 계정 정리:',err); }
       // 3) 강사 삭제
       const{error}=await sb.from('instructors').delete().eq('id',id);
-      if(error){alert('삭제 오류: '+error.message+'\n\n강사와 연결된 다른 데이터가 있을 수 있습니다.');return;}
+      if(error){
+        alert('삭제 오류: '+error.message
+          +'\n\n이 강사를 참조하는 데이터가 남아 있습니다.\n'
+          +'강좌 관리에서 이 강사가 담당한 강좌를 먼저 다른 강사로 바꾸거나 삭제한 뒤 다시 시도해 주세요.\n\n'
+          +'(그래도 안 되면 "강사_강제삭제.sql"을 Supabase에서 실행하세요)');
+        return;
+      }
       await loadAll();
     } else {
       DB.courses.forEach(c=>{ if(c.instructor_id===id) c.instructor_id=null; });
