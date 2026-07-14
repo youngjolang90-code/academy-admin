@@ -337,7 +337,7 @@ function renderDashboard(){
 
   // 강사면 본인 담당 강좌만
   const myCourses=teacher
-    ? DB.courses.filter(c=>c.instructor_id===myInst)
+    ? DB.courses.filter(c=>hasInst(c,myInst))
     : DB.courses;
   const myCourseIds=new Set(myCourses.map(c=>c.id));
   const scopedEnr=teacher
@@ -397,7 +397,7 @@ function renderDashboard(){
     ? todayCourses.map(c=>{
         const ses=(c.sessions||[]).filter(s=>s.weekday===wd).map(s=>`${hhmm(s.start_time)}~${hhmm(s.end_time)}`).join(', ');
         const cnt=DB.enrollments.filter(e=>e.course_id===c.id&&e.status==='ENROLLED').length;
-        return `<tr><td><b>${c.title}</b></td><td class="muted">${name('instructors',c.instructor_id)}</td><td class="muted">${ses}</td><td style="text-align:right;">${cnt}명</td></tr>`;
+        return `<tr><td><b>${c.title}</b></td><td class="muted">${instNames(c)}</td><td class="muted">${ses}</td><td style="text-align:right;">${cnt}명</td></tr>`;
       }).join('')
     : '<tr><td colspan="4" class="empty">오늘 예정된 수업이 없습니다.</td></tr>';
 
@@ -520,7 +520,7 @@ function doSearch(q){
   if(insts.length){
     html+='<div style="font-weight:700;font-size:13px;margin:6px 0 8px;color:var(--ink-soft);">강사</div>';
     insts.forEach(i=>{
-      const myCourses=DB.courses.filter(c=>c.instructor_id===i.id);
+      const myCourses=DB.courses.filter(c=>hasInst(c,i.id));
       const teachingNow=myCourses.map(c=>({c,s:nowTeaching(c)})).find(x=>x.s);
       const status=teachingNow
         ? `<span style="background:#dcefe7;color:#1f6b54;padding:2px 9px;border-radius:20px;font-size:11.5px;font-weight:600;">● 수업 중 · ${name('subjects',teachingNow.c.subject_id)} (${name('rooms',teachingNow.s.room_id)})</span>`
@@ -555,7 +555,7 @@ function doSearch(q){
         const c=DB.courses.find(x=>x.id===e.course_id); if(!c)return'';
         const when=(c.sessions||[]).map(x=>`${WD[x.weekday]} ${hhmm(x.start_time)}~${hhmm(x.end_time)}`).join(', ');
         const st=e.status==='WAITLIST'?' <span style="color:var(--full-ink);">[대기]</span>':'';
-        return `<div class="cmeta" style="font-size:12.5px;">· <b>${c.title}</b> — ${name('instructors',c.instructor_id)} 강사 · ${when}${st}</div>`;
+        return `<div class="cmeta" style="font-size:12.5px;">· <b>${c.title}</b> — ${instNames(c)} 강사 · ${when}${st}</div>`;
       }).filter(Boolean).join('')||'<div class="muted" style="font-size:12.5px;">신청한 강좌 없음</div>';
       html+=`<div class="card" style="padding:13px;margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
@@ -579,7 +579,7 @@ function doSearch(q){
       const live=nowTeaching(c)?' <span style="background:#dcefe7;color:#1f6b54;padding:1px 7px;border-radius:20px;font-size:11px;font-weight:600;">진행 중</span>':'';
       html+=`<div class="card" style="padding:13px;margin-bottom:10px;">
         <div style="margin-bottom:4px;"><b style="font-size:15px;">${c.title}</b>${live}</div>
-        <div class="cmeta" style="font-size:12.5px;">${name('subjects',c.subject_id)} · ${name('instructors',c.instructor_id)} 강사 · ${when}</div>
+        <div class="cmeta" style="font-size:12.5px;">${name('subjects',c.subject_id)} · ${instNames(c)} 강사 · ${when}</div>
         <div class="cmeta" style="font-size:12.5px;">등록 ${enrolled}명${c.capacity?(' / 정원 '+c.capacity):''}</div></div>`;
     });
   }
@@ -635,7 +635,7 @@ function studentTimetable(sid){
 function gradeText(g){return g===0?'7세':g<=6?('초'+g):g<=9?('중'+(g-6)):g<=12?('고'+(g-9)):'성인';}
 
 function renderTimetable(){
-  const flat=conflicts().filter(f=> ttFilter==null ? true : f.course.instructor_id===ttFilter);
+  const flat=conflicts().filter(f=> ttFilter==null ? true : hasInst(f.course,ttFilter));
   let rows='';
   for(let h=9;h<=22;h++){
     rows+=`<tr><td class="tcol muted">${String(h).padStart(2,'0')}:00</td>`;
@@ -644,14 +644,14 @@ function renderTimetable(){
       rows+='<td>'+cells.map(f=>{
         const cls=f.room&&f.grade?'both':f.room?'room':f.grade?'warn':'ok';
         return `<div class="cls ${cls}" onclick="explain(${f.course.id})">
-          <b>${name('subjects',f.course.subject_id)}</b><br>${name('instructors',f.course.instructor_id)}<br>
+          <b>${name('subjects',f.course.subject_id)}</b><br>${instNames(f.course)}<br>
           ${hhmm(f.start_time)}~${hhmm(f.end_time)}<br>${name('rooms',f.room_id)}</div>`;
       }).join('')+'</td>';
     }
     rows+='</tr>';
   }
   // 강사 필터 버튼들 — 강좌가 있는 강사만 표시 (자동 반영)
-  const activeInstIds=[...new Set(DB.courses.map(c=>c.instructor_id).filter(x=>x!=null))];
+  const activeInstIds=[...new Set([].concat(...DB.courses.map(c=>(c.instructor_ids&&c.instructor_ids.length)?c.instructor_ids:(c.instructor_id?[c.instructor_id]:[]))))];
   const activeInsts=DB.instructors.filter(i=>activeInstIds.includes(i.id));
   const chips=`<button class="ttchip ${ttFilter==null?'on':''}" onclick="ttFilter=null;renderTimetable()">전체</button>`+
     activeInsts.map(i=>`<button class="ttchip ${ttFilter===i.id?'on':''}" onclick="ttFilter=${i.id};renderTimetable()">${i.name}</button>`).join('');
@@ -671,7 +671,7 @@ function renderTimetable(){
 function explain(cid){
   const flat=conflicts().filter(f=>f.course.id===cid);
   const c=DB.courses.find(x=>x.id===cid);
-  let msg=`「${c.title}」(${name('subjects',c.subject_id)} · ${name('instructors',c.instructor_id)})\n\n`;
+  let msg=`「${c.title}」(${name('subjects',c.subject_id)} · ${instNames(c)})\n\n`;
   const conf=flat.filter(f=>f.room||f.grade);
   if(!conf.length) msg+='충돌 없음 — 시간·장소·대상이 다른 강좌와 겹치지 않습니다.';
   else conf.forEach(f=>{
@@ -710,7 +710,7 @@ function renderCourses(){
     return `<tr>
       <td><span class="tag">${name('subjects',c.subject_id)}</span></td>
       <td><b>${c.title}</b></td>
-      <td style="white-space:nowrap;">${name('instructors',c.instructor_id)}</td>
+      <td style="white-space:nowrap;">${instNames(c)}</td>
       <td class="muted" style="white-space:nowrap;">${name('target_groups',c.target_id)}</td>
       <td class="muted" style="font-size:12px;white-space:nowrap;">${s}</td>
       <td class="muted" style="white-space:nowrap;">${room}</td>
@@ -839,10 +839,12 @@ function courseForm(id,semId){
       <div class="field"><label>과목</label>${combo('f_subject','subjects',c.subject_id,'과목')}</div>
       <div class="field"><label>대상</label>${combo('f_target','target_groups',c.target_id,'대상')}</div>
     </div>
-    <div class="grid2">
-      <div class="field"><label>담당 강사</label>${combo('f_inst','instructors',c.instructor_id,'강사')}</div>
-      <div class="field"><label>수강료(원)</label><input id="f_tuition" type="number" value="${c.tuition||''}" placeholder="예: 80000"></div>
+    <div class="field"><label>담당 강사 <span style="color:#889;font-weight:400;font-size:12px;">(여러 명 가능)</span></label>
+      <div id="instBox"></div>
+      <button type="button" class="btn sm" id="addInst" style="margin-top:4px;">+ 강사 추가</button>
+      <div class="muted" style="font-size:11px;margin-top:4px;">※ 두 명 이상이면 각 강사 계정에서 모두 이 강좌가 보입니다.</div>
     </div>
+    <div class="field"><label>수강료(원)</label><input id="f_tuition" type="number" value="${c.tuition||''}" placeholder="예: 80000"></div>
     <div class="field"><label>정원(명) · 비우면 제한 없음</label><input id="f_capacity" type="number" value="${c.capacity||''}" placeholder="예: 10"></div>
     <div class="field"><label>커리큘럼 이미지 · 선택</label>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
@@ -864,7 +866,15 @@ function courseForm(id,semId){
       if(!val('f_title')){alert('강좌명을 입력해 주세요.');return;}
       const subject_id=await resolveId('subjects','f_subject');
       const target_id=await resolveId('target_groups','f_target');
-      const instructor_id=await resolveId('instructors','f_inst');
+      // 강사 여러 명 수집 (이름 → id, 없으면 새로 생성)
+      const instInputs=[...document.querySelectorAll('#instBox .inst-row input')];
+      const instructor_ids=[];
+      for(const inp of instInputs){
+        const nm=inp.value.trim();
+        if(!nm)continue;
+        const iid=await resolveIdByName('instructors',nm);
+        if(iid && !instructor_ids.includes(iid)) instructor_ids.push(iid);
+      }
       // 회차 행들을 모두 읽어 세션 배열 구성 (장소는 이름→id 변환/생성)
       const rows=[...document.querySelectorAll('#sessBox .sess-row')];
       const sessOut=[];
@@ -884,7 +894,9 @@ function courseForm(id,semId){
         });
       }
       const obj={
-        title:val('f_title'), subject_id, target_id, instructor_id,
+        title:val('f_title'), subject_id, target_id,
+        instructor_ids,                       // 여러 명
+        instructor_id:instructor_ids[0]||null, // 대표(호환)
         tuition:val('f_tuition')?+val('f_tuition'):null,
         capacity:val('f_capacity')?+val('f_capacity'):null,
         curriculum_url:val('f_curri_url')||null,
@@ -895,6 +907,25 @@ function courseForm(id,semId){
       if(!id && semId) obj.semester_id=semId; // 지정된 학기에 추가
       await save('courses',id,obj); closeModal(); renderCourses();
     });
+  // 강사 행 추가 함수
+  function instRow(instId){
+    const box=document.getElementById('instBox');
+    const div=document.createElement('div');
+    div.className='inst-row';
+    div.style.cssText='display:flex;gap:6px;margin-bottom:5px;align-items:center;';
+    const listId='instList_'+Math.random().toString(36).slice(2,7);
+    const cur=instId?((DB.instructors.find(x=>x.id===instId)||{}).name||''):'';
+    div.innerHTML=`<input list="${listId}" value="${cur.replace(/"/g,'&quot;')}" placeholder="강사 선택 또는 입력" autocomplete="off"
+        style="flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13.5px;">
+      <datalist id="${listId}">${DB.instructors.map(x=>`<option value="${(x.name||'').replace(/"/g,'&quot;')}">`).join('')}</datalist>
+      <button type="button" class="btn sm ghost" onclick="this.parentNode.remove()" style="padding:5px 9px;">✕</button>`;
+    box.appendChild(div);
+  }
+  // 기존 강사들 채우기 (없으면 빈 행 1개)
+  const curInsts=(c.instructor_ids&&c.instructor_ids.length)?c.instructor_ids:(c.instructor_id?[c.instructor_id]:[]);
+  if(curInsts.length) curInsts.forEach(iid=>instRow(iid));
+  else instRow(null);
+  document.getElementById('addInst').onclick=()=>instRow(null);
   // "회차 추가" 버튼 동작 연결
   document.getElementById('addSess').onclick=()=>{
     document.getElementById('sessBox').insertAdjacentHTML('beforeend',sessRow({}));
@@ -1060,7 +1091,7 @@ function enrollCard(s){
       ? `<button class="btn sm ghost" style="color:#a32d2d;" onclick="delEnrollment(${e.id})" title="신청 취소">신청취소</button>`
       : '';
     return `<tr>
-      <td><b>${c.title}</b>${wait}<div class="cmeta" style="font-size:11.5px;">${name('subjects',c.subject_id)} · ${name('instructors',c.instructor_id)} · ${when||'-'}</div></td>
+      <td><b>${c.title}</b>${wait}<div class="cmeta" style="font-size:11.5px;">${name('subjects',c.subject_id)} · ${instNames(c)} · ${when||'-'}</div></td>
       <td style="text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;">${tui?tui.toLocaleString()+'원':'-'}</td>
       <td style="white-space:nowrap;"><span style="font-weight:600;color:${pay[1]};">${pay[0]}</span></td>
       <td onclick="event.stopPropagation()"><div class="row-actions">${payBtn}${delBtn}</div></td>
@@ -1174,7 +1205,7 @@ function studentDetail(id){
     const conf=e.confirmed===true?' <span class="tag" style="font-size:10px;background:#dcefe7;color:#1f6b54;">확정</span>':'';
     const payBtn=ps==='UNPAID'?`<button class="btn sm" style="margin-top:4px;" onclick="payOneInDetail(${e.id},${s.id})">완납</button>`:'';
     return `<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);">
-      <div><b>${c.title}</b>${wait}${conf}<div class="cmeta" style="font-size:11.5px;">${name('subjects',c.subject_id)} · ${name('instructors',c.instructor_id)} · ${when||'-'}</div></div>
+      <div><b>${c.title}</b>${wait}${conf}<div class="cmeta" style="font-size:11.5px;">${name('subjects',c.subject_id)} · ${instNames(c)} · ${when||'-'}</div></div>
       <div style="text-align:right;white-space:nowrap;">
         <div style="font-variant-numeric:tabular-nums;">${tui?tui.toLocaleString()+'원':'-'}</div>
         <div style="font-size:11px;color:${pay[1]};font-weight:600;">${pay[0]}</div>
@@ -1813,8 +1844,8 @@ document.getElementById('overlay').onclick=e=>{if(e.target.id==='overlay')closeM
 async function save(table,id,obj){
   if(LIVE){
     if(table==='courses'){
-      // 강좌 본체 저장
-      let payload={...obj}; delete payload.sessions; delete payload.instructor_id;
+      // 강좌 본체 저장 (강사 정보는 별도 테이블이므로 payload에서 제외)
+      let payload={...obj}; delete payload.sessions; delete payload.instructor_id; delete payload.instructor_ids;
       // 새 강좌면 현재 활성 학기(또는 첫 학기)에 자동 소속
       if(!id && !payload.semester_id){
         const sem=(DB.semesters||[]).find(s=>s.is_active)||(DB.semesters||[])[0];
@@ -1835,10 +1866,14 @@ async function save(table,id,obj){
         const r2=await sb.from('course_sessions').insert(rows);
         if(r2.error)alert('세션 저장 오류: '+r2.error.message);
       }
-      // 강사 연결 저장
-      if(obj.instructor_id){
-        await sb.from('course_instructors').delete().eq('course_id',courseId);
-        const r3=await sb.from('course_instructors').insert({course_id:courseId,instructor_id:obj.instructor_id,is_primary:true});
+      // 강사 연결 저장 (여러 명 지원)
+      const instIds=(obj.instructor_ids&&obj.instructor_ids.length)
+        ? obj.instructor_ids
+        : (obj.instructor_id?[obj.instructor_id]:[]);
+      await sb.from('course_instructors').delete().eq('course_id',courseId);
+      if(instIds.length){
+        const links=instIds.map((iid,idx)=>({course_id:courseId,instructor_id:iid,is_primary:idx===0}));
+        const r3=await sb.from('course_instructors').insert(links);
         if(r3.error)alert('강사 연결 오류: '+r3.error.message);
       }
     } else {
@@ -1895,7 +1930,7 @@ async function del(table,id){
   }
   // 강사 삭제: 담당 강좌가 있으면 삭제를 막음 (데이터 연결이 끊기는 것 방지)
   if(table==='instructors'){
-    const linkedCourses=DB.courses.filter(c=>c.instructor_id===id);
+    const linkedCourses=DB.courses.filter(c=>hasInst(c,id));
     if(linkedCourses.length){
       alert(`이 강사가 담당한 강좌 ${linkedCourses.length}개가 있어 삭제할 수 없습니다.\n\n`
         +linkedCourses.slice(0,6).map(c=>'· '+c.title).join('\n')
@@ -1971,18 +2006,33 @@ async function loadAll(){
       if(!d.error&&d.data)DB.students=d.data;
     }
   }catch(err){ console.warn('학생 로드 건너뜀:',err); }
-  // 강좌의 세션·강사 연결 로드
+  // 강좌의 세션·강사 연결 로드 (강사는 여러 명 가능)
   try{
     const cs=await sb.from('course_sessions').select('*');
     const ci=await sb.from('course_instructors').select('*');
     if(cs.data&&ci.data){
       DB.courses.forEach(c=>{
         c.sessions=cs.data.filter(s=>s.course_id===c.id);
-        const link=ci.data.find(x=>x.course_id===c.id);
-        c.instructor_id=link?link.instructor_id:null;
+        const links=ci.data.filter(x=>x.course_id===c.id);
+        // 주강사(is_primary) 우선 정렬
+        links.sort((a,b)=>(b.is_primary?1:0)-(a.is_primary?1:0));
+        c.instructor_ids=links.map(x=>x.instructor_id);
+        c.instructor_id=c.instructor_ids.length?c.instructor_ids[0]:null; // 대표 강사(호환용)
       });
     }
   }catch(err){ console.warn('세션 로드 건너뜀:',err); }
+}
+// 강좌의 강사 이름들 (여러 명이면 쉼표로)
+function instNames(c){
+  const ids=(c&&c.instructor_ids&&c.instructor_ids.length)?c.instructor_ids:(c&&c.instructor_id?[c.instructor_id]:[]);
+  if(!ids.length)return '-';
+  return ids.map(id=>name('instructors',id)).join(', ');
+}
+// 이 강좌를 이 강사가 담당하는가
+function hasInst(c,instId){
+  if(instId==null)return false;
+  const ids=(c&&c.instructor_ids&&c.instructor_ids.length)?c.instructor_ids:(c&&c.instructor_id?[c.instructor_id]:[]);
+  return ids.includes(instId);
 }
 
 // ════════ 구글 시트 백업 ════════
@@ -1999,7 +2049,7 @@ async function backupToSheet(){
   const payload={
     courses:DB.courses.map(c=>({
       id:c.id, 과목:name('subjects',c.subject_id), 강좌명:c.title,
-      강사:name('instructors',c.instructor_id), 대상:name('target_groups',c.target_id),
+      강사:instNames(c), 대상:name('target_groups',c.target_id),
       주당횟수:c.sessions_per_week, 수강료:c.tuition||'',
       요일시간:(c.sessions||[]).map(s=>`${WD[s.weekday]} ${hhmm(s.start_time)}~${hhmm(s.end_time)} @${name('rooms',s.room_id)}`).join(' / ')
     })),
@@ -2013,7 +2063,7 @@ async function backupToSheet(){
         학년:st.grade!=null?gradeText(st.grade):'',
         강좌:c.title||'',
         과목:c.subject_id?name('subjects',c.subject_id):'',
-        강사:c.instructor_id?name('instructors',c.instructor_id):'',
+        강사:instNames(c),
         수강료:c.tuition||0,
         상태:e.status==='WAITLIST'?'대기':e.status==='ENROLLED'?'등록':(e.status||''),
         납부:e.payment_status==='PAID'?'완납':e.payment_status==='REFUNDED'?'환불':'미납',
@@ -2039,11 +2089,11 @@ async function backupToSheet(){
       const out=[];
       DB.courses.forEach(c=>{
         const rows=DB.enrollments.filter(e=>e.course_id===c.id);
-        if(!rows.length){ out.push({강좌:c.title,과목:name('subjects',c.subject_id),강사:name('instructors',c.instructor_id),학생:'(수강생 없음)',학년:'',상태:'',납부:''}); return; }
+        if(!rows.length){ out.push({강좌:c.title,과목:name('subjects',c.subject_id),강사:instNames(c),학생:'(수강생 없음)',학년:'',상태:'',납부:''}); return; }
         rows.forEach(e=>{
           const st=DB.students.find(x=>x.id===e.student_id)||{};
           out.push({
-            강좌:c.title, 과목:name('subjects',c.subject_id), 강사:name('instructors',c.instructor_id),
+            강좌:c.title, 과목:name('subjects',c.subject_id), 강사:instNames(c),
             학생:st.name||'', 학년:st.grade!=null?gradeText(st.grade):'',
             상태:e.status==='WAITLIST'?'대기':'등록',
             납부:e.payment_status==='PAID'?'완납':e.payment_status==='REFUNDED'?'환불':'미납'
@@ -2078,7 +2128,7 @@ function exportExcel(kind){
   if(kind==='courses'){
     fname='강좌목록';
     rows=DB.courses.map(c=>({
-      과목:name('subjects',c.subject_id), 강좌명:c.title, 강사:name('instructors',c.instructor_id),
+      과목:name('subjects',c.subject_id), 강좌명:c.title, 강사:instNames(c),
       대상:name('target_groups',c.target_id),
       '요일·시간':(c.sessions||[]).map(s=>`${WD[s.weekday]} ${hhmm(s.start_time)}~${hhmm(s.end_time)}`).join(' / '),
       장소:(c.sessions||[])[0]?name('rooms',c.sessions[0].room_id):'',
@@ -2100,7 +2150,7 @@ function exportExcel(kind){
         학년:st.grade!=null?gradeText(st.grade):'',
         강좌:c.title||'',
         과목:c.subject_id?name('subjects',c.subject_id):'',
-        강사:c.instructor_id?name('instructors',c.instructor_id):'',
+        강사:instNames(c),
         수강료:c.tuition||0,
         상태:e.status==='WAITLIST'?'대기':e.status==='ENROLLED'?'등록':(e.status||''),
         납부:e.payment_status==='PAID'?'완납':e.payment_status==='REFUNDED'?'환불':'미납',
@@ -2125,11 +2175,11 @@ function exportExcel(kind){
     rows=[];
     DB.courses.forEach(c=>{
       const ens=DB.enrollments.filter(e=>e.course_id===c.id);
-      if(!ens.length){ rows.push({강좌:c.title,과목:name('subjects',c.subject_id),강사:name('instructors',c.instructor_id),학생:'(수강생 없음)',학년:'',상태:'',납부:''}); return; }
+      if(!ens.length){ rows.push({강좌:c.title,과목:name('subjects',c.subject_id),강사:instNames(c),학생:'(수강생 없음)',학년:'',상태:'',납부:''}); return; }
       ens.forEach(e=>{
         const st=DB.students.find(x=>x.id===e.student_id)||{};
         rows.push({
-          강좌:c.title, 과목:name('subjects',c.subject_id), 강사:name('instructors',c.instructor_id),
+          강좌:c.title, 과목:name('subjects',c.subject_id), 강사:instNames(c),
           학생:st.name||'', 학년:st.grade!=null?gradeText(st.grade):'',
           상태:e.status==='WAITLIST'?'대기':'등록',
           납부:e.payment_status==='PAID'?'완납':e.payment_status==='REFUNDED'?'환불':'미납'
@@ -2166,7 +2216,7 @@ async function exportTimetableImg(scale){
 }
 // 저장 전용: 화면과 같은 1시간=1칸 표 구조 + 과목별 색·제목·범례 (출력/공유용)
 function buildPrettyTimetable(){
-  const flat=conflicts().filter(f=> ttFilter==null ? true : f.course.instructor_id===ttFilter);
+  const flat=conflicts().filter(f=> ttFilter==null ? true : hasInst(f.course,ttFilter));
   // 과목별 파스텔 색상
   const palette=[
     ['#e8f0fe','#1a56b0'],['#e6f4ea','#1e7e45'],['#fce8e6','#b3261e'],
@@ -2217,7 +2267,7 @@ function buildPrettyTimetable(){
         return `<div style="background:${col[0]};border-left:3px solid ${col[1]};border-radius:5px;padding:4px 6px;margin-bottom:3px;line-height:1.35;">
           <div style="font-size:9px;color:${col[1]};font-weight:600;opacity:.85;">${hhmm(f.start_time)}~${hhmm(f.end_time)}</div>
           <div style="font-weight:700;font-size:11.5px;color:${col[1]};margin:1px 0;">${name('subjects',f.course.subject_id)} <span style="opacity:.6;">|</span> ${name('target_groups',f.course.target_id)}</div>
-          <div style="font-size:9.5px;color:#667;">${name('instructors',f.course.instructor_id)} · ${name('rooms',f.room_id)}</div>
+          <div style="font-size:9.5px;color:#667;">${instNames(f.course)} · ${name('rooms',f.room_id)}</div>
         </div>`;
       }).join('');
       html+='</td>';
