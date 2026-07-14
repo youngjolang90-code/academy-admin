@@ -269,13 +269,27 @@ async function doLogin(){
     // RPC로 로그인 검증 — 연락처·비번해시는 브라우저로 안 나옴
     const res=await sb.rpc('student_login',{p_login_id:lid,p_pw_hash:ph});
     if(res.error){alert('로그인 오류: '+res.error.message);return;}
-    if(!res.data||!res.data.length){alert('아이디 또는 비밀번호가 올바르지 않습니다.');return;}
+    if(!res.data||!res.data.length){
+      logStuLogin(null,lid,null,false); // 실패 기록
+      alert('아이디 또는 비밀번호가 올바르지 않습니다.');return;
+    }
     const s=res.data[0];
     me={id:s.id,name:s.name,grade:s.grade};
+    logStuLogin(s.id,lid,s.name,true); // 성공 기록
     await loadAll();
   } else { me={id:1,name:'미리보기',grade:2}; }
   saveStuSession();
   selected=new Set(); renderDashboard();
+}
+// 학생 로그인 이력 기록
+async function logStuLogin(userId,loginId,userName,success){
+  if(!LIVE)return;
+  try{
+    await sb.from('login_logs').insert({
+      user_type:'STUDENT', user_id:userId||null, login_id:loginId||null,
+      user_name:userName||null, success:!!success
+    });
+  }catch(e){ /* 기록 실패는 무시 */ }
 }
 function logout(){
   me=null;selected=new Set();
