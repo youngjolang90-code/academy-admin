@@ -563,11 +563,14 @@ function toggle(id,ev){
 
 function showCurri(id){
   const c=DB.courses.find(x=>x.id===id);
-  const img=c.curriculum_url?`<img src="${c.curriculum_url}" alt="커리큘럼">`:'';
-  const txt=c.curriculum_text?`<div style="white-space:pre-wrap;font-size:13.5px;line-height:1.7;">${c.curriculum_text.replace(/</g,'&lt;')}</div>`:'';
+  // 여러 이미지 URL을 줄바꿈으로 분리
+  const urls=(c.curriculum_url||'').split(/\n+/).map(s=>s.trim()).filter(Boolean);
+  const imgs=urls.map((u,i)=>`<img src="${u}" alt="커리큘럼 ${i+1}" loading="lazy" style="width:100%;border-radius:8px;margin-bottom:10px;display:block;">`).join('');
+  const txt=c.curriculum_text?`<div style="white-space:pre-wrap;font-size:13.5px;line-height:1.7;margin-top:6px;">${c.curriculum_text.replace(/</g,'&lt;')}</div>`:'';
+  const count=urls.length>1?`<div class="muted" style="font-size:12px;margin-bottom:8px;">총 ${urls.length}장</div>`:'';
   document.getElementById('modal').innerHTML=`
     <h3>${c.title} 커리큘럼 <button class="x" onclick="closeModal()">×</button></h3>
-    ${img}${txt}${(!img&&!txt)?'<p class="muted">등록된 커리큘럼이 없습니다.</p>':''}`;
+    <div style="max-height:70vh;overflow-y:auto;">${count}${imgs}${txt}${(!imgs&&!txt)?'<p class="muted">등록된 커리큘럼이 없습니다.</p>':''}</div>`;
   document.getElementById('overlay').classList.add('show');
 }
 function closeModal(){document.getElementById('overlay').classList.remove('show');}
