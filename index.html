@@ -855,15 +855,16 @@ function courseForm(id,semId){
     </div>
     <div class="field"><label>수강료(원)</label><input id="f_tuition" type="number" value="${c.tuition||''}" placeholder="예: 80000"></div>
     <div class="field"><label>정원(명) · 비우면 제한 없음</label><input id="f_capacity" type="number" value="${c.capacity||''}" placeholder="예: 10"></div>
-    <div class="field"><label>커리큘럼 이미지 · 선택</label>
-      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
-        <input type="file" id="f_curri_file" accept="image/*" onchange="uploadCurriImg(this)"
+    <div class="field"><label>커리큘럼 이미지 · 선택 <span style="color:#889;font-weight:400;font-size:12px;">(여러 장 가능)</span></label>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
+        <input type="file" id="f_curri_file" accept="image/*" multiple onchange="uploadCurriImgs(this)"
           style="flex:1;padding:6px;border:1px solid var(--line);border-radius:8px;font-size:12.5px;background:#fff;">
         <span id="f_curri_status" class="muted" style="font-size:11.5px;white-space:nowrap;"></span>
       </div>
-      <input id="f_curri_url" value="${(c.curriculum_url||'').replace(/"/g,'&quot;')}" placeholder="이미지를 올리거나 주소를 직접 붙여넣기">
-      <div id="f_curri_preview" style="margin-top:8px;">${c.curriculum_url?`<img src="${c.curriculum_url}" style="max-width:100%;max-height:150px;border-radius:8px;border:1px solid var(--line);">`:''}</div>
-      <div class="muted" style="font-size:11px;margin-top:4px;">※ 파일을 선택하면 자동으로 업로드되고 주소가 채워집니다.</div>
+      <div id="f_curri_thumbs" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px;"></div>
+      <textarea id="f_curri_url" rows="2" placeholder="이미지를 올리면 주소가 자동으로 쌓입니다 (한 줄에 하나씩)"
+        style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:12px;font-family:monospace;color:#889;">${(c.curriculum_url||'').replace(/</g,'&lt;')}</textarea>
+      <div class="muted" style="font-size:11px;margin-top:4px;">※ 여러 장을 한 번에 선택할 수 있어요. 올린 순서대로 학생에게 보입니다. 썸네일의 ✕로 삭제하세요.</div>
     </div>
     <div class="field"><label>커리큘럼 설명 · 선택</label><textarea id="f_curri_text" rows="3" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13.5px;font-family:inherit;" placeholder="수업 내용·주차별 계획 등">${c.curriculum_text||''}</textarea></div>
     <div class="field"><label>요일 · 시간 · 장소</label>
@@ -935,44 +936,64 @@ function courseForm(id,semId){
   if(curInsts.length) curInsts.forEach(iid=>instRow(iid));
   else instRow(null);
   document.getElementById('addInst').onclick=()=>instRow(null);
+  renderCurriThumbs(); // 기존 커리큘럼 이미지 썸네일 표시
   // "회차 추가" 버튼 동작 연결
   document.getElementById('addSess').onclick=()=>{
     document.getElementById('sessBox').insertAdjacentHTML('beforeend',sessRow({}));
   };
 }
-// 커리큘럼 이미지 업로드 (Supabase Storage → 공개 URL 자동 입력)
-async function uploadCurriImg(input){
-  const file=input.files&&input.files[0]; if(!file)return;
+// 커리큘럼 이미지 여러 장 업로드 (Supabase Storage → URL들을 줄바꿈으로 누적)
+async function uploadCurriImgs(input){
+  const files=[...(input.files||[])]; if(!files.length)return;
   const status=document.getElementById('f_curri_status');
   const urlBox=document.getElementById('f_curri_url');
-  const preview=document.getElementById('f_curri_preview');
   if(!LIVE){ if(status)status.textContent='샘플 모드에서는 업로드 불가'; return; }
-  // 용량 체크 (5MB)
-  if(file.size > 5*1024*1024){
-    alert('이미지가 너무 큽니다 (5MB 이하로 올려주세요).');
-    input.value=''; return;
+  let urls=(urlBox.value||'').split(/\n+/).map(s=>s.trim()).filter(Boolean);
+  let done=0, failed=0;
+  for(let i=0;i<files.length;i++){
+    const file=files[i];
+    if(file.size > 5*1024*1024){ failed++; continue; }
+    if(status){status.textContent='업로드 중… ('+(i+1)+'/'+files.length+')'; status.style.color='var(--ink-soft)';}
+    try{
+      const ext=(file.name.split('.').pop()||'png').toLowerCase().replace(/[^a-z0-9]/g,'');
+      const path='course_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)+'.'+(ext||'png');
+      const{error}=await sb.storage.from('curriculum').upload(path,file,{cacheControl:'3600',upsert:false});
+      if(error){
+        failed++;
+        if(i===0)alert('업로드 오류: '+error.message
+          +'\n\n확인할 점:\n1) Supabase → Storage에 "curriculum" 버킷이 있는지\n2) Public bucket으로 되어 있는지\n3) 권한 SQL을 실행했는지');
+        continue;
+      }
+      const{data}=sb.storage.from('curriculum').getPublicUrl(path);
+      urls.push(data.publicUrl); done++;
+    }catch(e){ failed++; }
   }
-  if(status){status.textContent='업로드 중…'; status.style.color='var(--ink-soft)';}
-  try{
-    // 파일명: 시간+임의값 (한글·공백 파일명 문제 방지)
-    const ext=(file.name.split('.').pop()||'png').toLowerCase().replace(/[^a-z0-9]/g,'');
-    const path=`course_${Date.now()}_${Math.random().toString(36).slice(2,7)}.${ext||'png'}`;
-    const{error}=await sb.storage.from('curriculum').upload(path,file,{cacheControl:'3600',upsert:false});
-    if(error){
-      if(status){status.textContent='실패';status.style.color='#a32d2d';}
-      alert('업로드 오류: '+error.message
-        +'\n\n확인할 점:\n1) Supabase → Storage에 "curriculum" 버킷이 있는지\n2) Public bucket으로 되어 있는지\n3) 권한 SQL을 실행했는지');
-      return;
-    }
-    const{data}=sb.storage.from('curriculum').getPublicUrl(path);
-    const publicUrl=data.publicUrl;
-    if(urlBox)urlBox.value=publicUrl;
-    if(preview)preview.innerHTML=`<img src="${publicUrl}" style="max-width:100%;max-height:150px;border-radius:8px;border:1px solid var(--line);">`;
-    if(status){status.textContent='✓ 업로드 완료';status.style.color='#1f6b54';}
-  }catch(e){
-    if(status){status.textContent='실패';status.style.color='#a32d2d';}
-    alert('업로드 중 오류: '+e.message);
+  urlBox.value=urls.join('\n');
+  renderCurriThumbs();
+  input.value='';
+  if(status){
+    status.textContent='\u2713 '+done+'장 완료'+(failed?' \u00b7 '+failed+'장 실패(5MB 초과 등)':'');
+    status.style.color=failed?'#a32d2d':'#1f6b54';
   }
+}
+// 커리큘럼 썸네일 목록 (순서·삭제)
+function renderCurriThumbs(){
+  const urlBox=document.getElementById('f_curri_url');
+  const box=document.getElementById('f_curri_thumbs');
+  if(!urlBox||!box)return;
+  const urls=(urlBox.value||'').split(/\n+/).map(s=>s.trim()).filter(Boolean);
+  box.innerHTML=urls.map((u,i)=>'<div style="position:relative;width:76px;">'
+    +'<img src="'+u+'" style="width:76px;height:76px;object-fit:cover;border-radius:8px;border:1px solid var(--line);">'
+    +'<span style="position:absolute;top:2px;left:2px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;padding:1px 5px;border-radius:10px;">'+(i+1)+'</span>'
+    +'<button type="button" onclick="removeCurriImg('+i+')" title="삭제" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:none;background:#a32d2d;color:#fff;font-size:12px;cursor:pointer;line-height:1;">\u2715</button>'
+    +'</div>').join('')||'<span class="muted" style="font-size:12px;">아직 등록된 이미지가 없습니다.</span>';
+}
+function removeCurriImg(idx){
+  const urlBox=document.getElementById('f_curri_url');
+  let urls=(urlBox.value||'').split(/\n+/).map(s=>s.trim()).filter(Boolean);
+  urls.splice(idx,1);
+  urlBox.value=urls.join('\n');
+  renderCurriThumbs();
 }
 // 이름으로 마스터 항목을 찾거나 새로 만들어 id 반환 (장소 등)
 async function resolveIdByName(arr,raw){
