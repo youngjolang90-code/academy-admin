@@ -713,9 +713,12 @@ function renderCourses(){
   }).join('');
 
   const rows=semCourses.map(c=>{
-    const sList=(c.sessions||[]).map(x=>`${WD[x.weekday]} ${hhmm(x.start_time)}~${hhmm(x.end_time)}`);
+    // 각 회차를 "요일 시간 · 장소" 한 줄로 (여러 회차 모두 표시)
+    const sess=(c.sessions||[]);
+    const sList=sess.map(x=>`${WD[x.weekday]} ${hhmm(x.start_time)}~${hhmm(x.end_time)}`);
     const s=sList.length?sList.join('<br>'):'-';
-    const room=(c.sessions||[])[0]?name('rooms',c.sessions[0].room_id):'-';
+    const roomList=sess.map(x=>x.room_id?name('rooms',x.room_id):'-');
+    const room=roomList.length?roomList.join('<br>'):'-';
     return `<tr>
       <td><span class="tag">${name('subjects',c.subject_id)}</span></td>
       <td><b>${c.title}</b></td>
@@ -2161,7 +2164,8 @@ function exportExcel(kind){
       과목:name('subjects',c.subject_id), 강좌명:c.title, 강사:instNames(c),
       대상:name('target_groups',c.target_id),
       '요일·시간':(c.sessions||[]).map(s=>`${WD[s.weekday]} ${hhmm(s.start_time)}~${hhmm(s.end_time)}`).join(' / '),
-      장소:(c.sessions||[])[0]?name('rooms',c.sessions[0].room_id):'',
+      장소:[...new Set((c.sessions||[]).map(s=>s.room_id?name('rooms',s.room_id):'').filter(Boolean))].join(' / '),
+      '회차별 상세':(c.sessions||[]).map(s=>`${WD[s.weekday]} ${hhmm(s.start_time)}~${hhmm(s.end_time)} ${s.room_id?name('rooms',s.room_id):'장소미정'}`).join(' / '),
       정원:c.capacity??'', 수강료:c.tuition||''
     }));
   } else if(kind==='students'){
