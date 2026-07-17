@@ -18,11 +18,13 @@
 <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <style>
   :root{
-    --ink:#1f2421; --ink-soft:#5b635d; --line:#e3e6e1; --line-soft:#eef0ec;
-    --paper:#fbfcfa; --card:#ffffff; --brand:#2f6f5b; --brand-soft:#e6f0ec;
+    --ink:#1a1d24; --ink-soft:#6b7280; --line:#e8eaed; --line-soft:#f1f3f5;
+    --paper:#f7f8fa; --card:#ffffff; --brand:#b5893a; --brand-soft:#f7f0e3;
+    --brand-deep:#363636;
     --warn-bg:#fbe9c8; --warn-ink:#7a5310; --danger-bg:#f6cccc; --danger-ink:#8a2020;
     --both-bg:#e88a8a; --both-ink:#5c1414;
-    --radius:10px;
+    --radius:12px; --shadow:0 1px 3px rgba(20,25,35,.06),0 1px 2px rgba(20,25,35,.04);
+    --shadow-lg:0 4px 16px rgba(20,25,35,.08);
   }
   *{box-sizing:border-box;}
   body{margin:0;background:var(--paper);color:var(--ink);
@@ -31,52 +33,49 @@
   a{color:inherit;}
   .layout{display:flex;min-height:100vh;}
   /* sidebar */
-  .side{width:208px;flex-shrink:0;background:var(--card);border-right:1px solid var(--line);
-    padding:20px 14px;display:flex;flex-direction:column;gap:4px;}
-  .brand{font-size:15px;font-weight:700;letter-spacing:-.02em;padding:6px 10px 14px;}
-  .brand small{display:block;font-size:11px;font-weight:500;color:var(--ink-soft);letter-spacing:0;}
-  .navbtn{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:8px;
-    cursor:pointer;color:var(--ink-soft);font-weight:500;border:none;background:none;
-    width:100%;text-align:left;font-size:13.5px;}
-  .navbtn:hover{background:var(--line-soft);color:var(--ink);}
-  .navbtn.active{background:var(--brand-soft);color:var(--brand);font-weight:600;}
+  .side{width:216px;flex-shrink:0;background:var(--brand-deep);border-right:none;
+    padding:22px 14px;display:flex;flex-direction:column;gap:3px;}
+  .brand{font-size:15px;font-weight:700;letter-spacing:-.02em;padding:6px 10px 18px;color:#fff;}
+  .brand small{display:block;font-size:11px;font-weight:500;color:#9a9a9a;letter-spacing:0;margin-top:2px;}
+  .navbtn{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;
+    cursor:pointer;color:#c8cacd;font-weight:500;border:none;background:none;
+    width:100%;text-align:left;font-size:13.5px;transition:all .12s;}
+  .navbtn:hover{background:rgba(255,255,255,.08);color:#fff;}
+  .navbtn.active{background:var(--brand);color:#fff;font-weight:600;box-shadow:0 2px 8px rgba(181,137,58,.35);}
   .navbtn .ic{width:17px;text-align:center;}
-  /* 하위 탭 바 */
-  .subtabs{display:flex;gap:4px;margin-bottom:20px;border-bottom:1.5px solid var(--line);flex-wrap:wrap;}
-  .subtab{border:none;background:none;padding:9px 14px;cursor:pointer;font-size:13.5px;font-weight:500;
-    color:var(--ink-soft);border-bottom:2px solid transparent;margin-bottom:-1.5px;}
-  .subtab:hover{color:var(--ink);}
-  .subtab.on{color:var(--brand);font-weight:600;border-bottom-color:var(--brand);}
-  .conn{margin-top:auto;font-size:11px;color:var(--ink-soft);padding:8px 10px;
-    border-top:1px solid var(--line);}
+  .conn{margin-top:auto;font-size:11px;color:#8a8a8a;padding:10px;
+    border-top:1px solid rgba(255,255,255,.1);}
   .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;
-    vertical-align:middle;background:#c0c0c0;}
-  .dot.on{background:var(--brand);}
+    vertical-align:middle;background:#6a6a6a;}
+  .dot.on{background:#6ac47f;}
   /* main */
-  .main{flex:1;padding:26px 30px;min-width:0;}
-  .head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;gap:12px;flex-wrap:wrap;}
-  h1{font-size:19px;font-weight:700;letter-spacing:-.02em;margin:0;}
-  .sub{font-size:12.5px;color:var(--ink-soft);margin-top:2px;}
+  .main{flex:1;padding:28px 34px;min-width:0;}
+  .head{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px;gap:12px;flex-wrap:wrap;}
+  h1{font-size:20px;font-weight:700;letter-spacing:-.02em;margin:0;}
+  .sub{font-size:12.5px;color:var(--ink-soft);margin-top:3px;}
   .btn{border:1px solid var(--line);background:var(--card);color:var(--ink);
     padding:8px 14px;border-radius:8px;cursor:pointer;font-weight:600;font-size:13px;}
-  .btn:hover{border-color:#c8cdc6;}
-  .btn.primary{background:var(--brand);color:#fff;border-color:var(--brand);}
-  .btn.primary:hover{background:#275e4d;}
+  .btn:hover{border-color:#c9ccd0;background:#fafbfc;}
+  .btn.primary{background:var(--brand);color:#fff;border-color:var(--brand);box-shadow:0 1px 3px rgba(181,137,58,.25);}
+  .btn.primary:hover{background:#a37a2f;border-color:#a37a2f;}
   .btn.sm{padding:5px 9px;font-size:12px;font-weight:500;}
   .btn.ghost{border:none;background:none;color:var(--ink-soft);}
   .btn.ghost:hover{color:var(--brand);}
   /* card + table */
-  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);}
+  .statcard{background:var(--card);border:1px solid var(--line);border-radius:0 var(--radius) var(--radius) 0;box-shadow:var(--shadow);transition:box-shadow .15s,transform .15s;}
+  .statcard[onclick]:hover{box-shadow:var(--shadow-lg);transform:translateY(-1px);}
   table{width:100%;border-collapse:collapse;font-size:13px;}
   th{text-align:left;font-weight:600;color:var(--ink-soft);font-size:11.5px;
-    letter-spacing:.02em;padding:10px 14px;border-bottom:1.5px solid var(--line);white-space:nowrap;}
+    letter-spacing:.02em;padding:11px 14px;border-bottom:1px solid var(--line);white-space:nowrap;
+    background:#fafbfc;}
   td{padding:12px 14px;border-bottom:1px solid var(--line-soft);vertical-align:top;line-height:1.5;}
   td b{font-weight:600;color:var(--ink);}
   tr:last-child td{border-bottom:none;}
-  tr:hover td{background:#fafbf9;}
+  tr:hover td{background:#fdfaf3;}
   td .cmeta{color:var(--ink-soft);font-size:12px;margin-top:2px;line-height:1.45;}
-  .tag{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11.5px;font-weight:600;
-    background:var(--brand-soft);color:var(--brand);}
+  .tag{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11.5px;font-weight:600;
+    background:var(--brand-soft);color:#8a6621;}
   .muted{color:var(--ink-soft);}
   .row-actions{display:flex;gap:4px;justify-content:flex-end;}
   /* timetable */
@@ -153,9 +152,9 @@
   .drawer-backdrop{display:none;}
   @media(max-width:680px){
     .mobile-header{display:flex;align-items:center;gap:12px;position:fixed;top:0;left:0;right:0;
-      height:52px;background:var(--card);border-bottom:1px solid var(--line);z-index:60;padding:0 14px;}
-    .hamburger{border:none;background:none;font-size:22px;cursor:pointer;color:var(--ink);padding:4px 6px;line-height:1;}
-    .mh-title{font-weight:700;font-size:15px;}
+      height:52px;background:var(--brand-deep);border-bottom:none;z-index:60;padding:0 14px;}
+    .hamburger{border:none;background:none;font-size:22px;cursor:pointer;color:#fff;padding:4px 6px;line-height:1;}
+    .mh-title{font-weight:700;font-size:15px;color:#fff;}
     .drawer-backdrop{position:fixed;inset:0;background:rgba(20,28,24,.4);z-index:70;
       opacity:0;pointer-events:none;transition:opacity .2s;}
     .drawer-backdrop.open{display:block;opacity:1;pointer-events:auto;}
@@ -190,12 +189,18 @@
 <div class="layout">
   <aside class="side" id="sideNav">
     <div class="brand">플래닛 아카데미<small>수업관리 어드민</small></div>
-    <button class="navbtn active" data-group="dashboard"><span class="ic">🏠</span><span>대시보드</span></button>
-    <button class="navbtn" data-group="students"><span class="ic">👥</span><span>학생</span></button>
-    <button class="navbtn" data-group="courses"><span class="ic">📚</span><span>강좌</span></button>
-    <button class="navbtn" data-group="schedule"><span class="ic">🗓</span><span>일정·공지</span></button>
-    <button class="navbtn" data-group="settings"><span class="ic">⚙️</span><span>설정</span></button>
-    <button class="navbtn" id="logoutBtn" onclick="adminLogout()" style="margin-top:auto;"><span class="ic">↩</span><span>로그아웃</span></button>
+    <button class="navbtn active" data-view="dashboard"><span class="ic">🏠</span><span>대시보드</span></button>
+    <button class="navbtn" data-view="search"><span class="ic">🔍</span><span>통합검색</span></button>
+    <button class="navbtn" data-view="timetable"><span class="ic">▦</span><span>주간 시간표</span></button>
+    <button class="navbtn" data-view="courses"><span class="ic">▤</span><span>강좌 관리</span></button>
+    <button class="navbtn" data-view="students"><span class="ic">☺</span><span>학생 관리</span></button>
+    <button class="navbtn" data-view="enrollments"><span class="ic">📝</span><span>수강신청 관리</span></button>
+    <button class="navbtn" data-view="notices"><span class="ic">📢</span><span>공지사항</span></button>
+    <button class="navbtn" data-view="master"><span class="ic">⚙</span><span>기초자료</span></button>
+    <button class="navbtn" data-view="calendar"><span class="ic">📅</span><span>학사 캘린더</span></button>
+    <button class="navbtn" data-view="accounts" id="accountsBtn"><span class="ic">🔑</span><span>계정관리</span></button>
+    <button class="navbtn" id="backupBtn" style="margin-top:8px;"><span class="ic">⤓</span><span>시트 백업</span></button>
+    <button class="navbtn" id="logoutBtn" onclick="adminLogout()"><span class="ic">↩</span><span>로그아웃</span></button>
     <div class="conn"><span class="dot" id="connDot"></span><span id="connTxt">샘플 데이터</span></div>
   </aside>
   <main class="main" id="main"></main>
@@ -204,25 +209,6 @@
 <div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
 
 <script>
-// ════════════════════════════════════════════════════════════
-//  새 네비게이션: 5개 그룹 + 하위 탭
-// ════════════════════════════════════════════════════════════
-const GROUPS={
-  dashboard:{label:'대시보드', tabs:[['dashboard','현황'],['search','통합검색']]},
-  students:{label:'학생', tabs:[['students','학생 목록'],['enrollments','수강신청·납부'],['stuAccounts','학생 계정']]},
-  courses:{label:'강좌', tabs:[['courses','강좌 목록'],['timetable','주간 시간표']]},
-  schedule:{label:'일정·공지', tabs:[['calendar','학사 캘린더'],['notices','공지사항']]},
-  settings:{label:'설정', tabs:[['master','기초자료'],['accounts','계정관리'],['backup','백업']]}
-};
-let curGroup='dashboard';
-// 하위 탭 → 실제 렌더 함수 매핑
-const VIEW_RENDER={
-  dashboard:renderDashboard, search:renderSearch,
-  students:renderStudents, enrollments:renderEnrollments, stuAccounts:renderStuAccounts,
-  courses:renderCourses, timetable:renderTimetable,
-  calendar:renderCalendar, notices:renderNotices,
-  master:renderMaster, accounts:renderAccounts, backup:renderBackup
-};
 
 // ════════════════════════════════════════════════════════════
 //  ① Supabase 연결 정보 — 아래 두 값만 본인 것으로 바꾸세요.
@@ -318,19 +304,12 @@ let enrQuery='';
 let courseSemId=null; // 강좌 관리에서 선택된 학기 (null=활성학기)
 
 const TAB_TITLES={search:'통합검색',timetable:'주간 시간표',courses:'강좌 관리',students:'학생·수강신청',master:'기초자료',calendar:'학사 캘린더',accounts:'계정관리'};
-// 그룹 선택 → 첫 탭으로
-function setGroup(g){
-  curGroup=g;
-  document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active',b.dataset.group===g));
-  const firstTab=GROUPS[g].tabs[0][0];
-  // 설정·계정 등 관리자 전용 그룹 접근 제어
-  view=firstTab;
-  const mh=document.getElementById('mhTitle'); if(mh)mh.textContent=GROUPS[g].label;
+function setView(v){view=v;
+  document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active',b.dataset.view===v));
+  const mh=document.getElementById('mhTitle'); if(mh&&TAB_TITLES[v])mh.textContent=TAB_TITLES[v];
   closeDrawer();
-  render();
-}
-function setView(v){ view=v; render(); }
-document.querySelectorAll('.navbtn').forEach(b=>{ if(b.dataset.group) b.onclick=()=>setGroup(b.dataset.group); });
+  render();}
+document.querySelectorAll('.navbtn').forEach(b=>{ if(b.dataset.view) b.onclick=()=>setView(b.dataset.view); });
 // 서랍 열고닫기
 function toggleDrawer(){
   const s=document.getElementById('sideNav'), b=document.getElementById('drawerBackdrop');
@@ -341,37 +320,7 @@ function closeDrawer(){
   if(s)s.classList.remove('open'); if(b)b.classList.remove('open');
 }
 
-// 상단 하위탭 바 + 콘텐츠 렌더
-function render(){
-  const g=GROUPS[curGroup];
-  if(!g.tabs.some(t=>t[0]===view)) view=g.tabs[0][0];
-  const main=document.getElementById('main');
-  // 하위 탭 바 (2개 이상일 때만)
-  let tabBar='';
-  if(g.tabs.length>1){
-    tabBar=`<div class="subtabs">`+g.tabs.map(([v,label])=>
-      `<button class="subtab ${view===v?'on':''}" onclick="setView('${v}')">${label}</button>`
-    ).join('')+`</div>`;
-  }
-  main.innerHTML=tabBar;
-  // 기존 렌더 함수들은 #main에 innerHTML을 통째로 덮어씀 → 탭바가 지워지므로
-  // 탭바를 별도 컨테이너로 분리하고, 렌더는 body 컨테이너에 하도록 main을 감싼다
-  const body=document.createElement('div');
-  body.id='viewBody';
-  main.appendChild(body);
-  // 렌더 함수가 main.innerHTML=... 하면 탭바가 날아가므로, 임시로 main을 body처럼 동작시킴
-  const fn=VIEW_RENDER[view];
-  _renderTarget=body;
-  try{ if(fn)fn(); }catch(e){ console.error(e); body.innerHTML='<div class="empty" style="padding:40px;">불러오기 오류: '+e.message+'</div>'; }
-  _renderTarget=null;
-}
-let _renderTarget=null;
-// getElementById 우회: 렌더 중 'main' → viewBody
-const _origGetById=document.getElementById.bind(document);
-document.getElementById=function(id){
-  if(_renderTarget && id==='main') return _renderTarget;
-  return _origGetById(id);
-};
+function render(){({dashboard:renderDashboard,search:renderSearch,timetable:renderTimetable,courses:renderCourses,students:renderStudents,enrollments:renderEnrollments,notices:renderNotices,master:renderMaster,accounts:renderAccounts,calendar:renderCalendar}[view])();}
 
 function head(title,sub,btn){
   return `<div class="head"><div><h1>${title}</h1><div class="sub">${sub}</div></div>${btn||''}</div>`;
@@ -416,7 +365,7 @@ function renderDashboard(){
   if(teacher){
     // ── 강사 전용 대시보드 ──
     const myStudents=new Set(scopedEnr.map(e=>e.student_id)).size;
-    const stat=(label,val,color)=>`<div class="card" style="padding:16px 18px;flex:1;min-width:130px;">
+    const stat=(label,val,color)=>`<div class="statcard" style="padding:16px 18px;flex:1;min-width:130px;border-left:3px solid ${color};">
       <div class="muted" style="font-size:12px;">${label}</div>
       <div style="font-size:26px;font-weight:700;color:${color};margin-top:2px;font-variant-numeric:tabular-nums;">${val}</div></div>`;
     const todayList=todayCourses.length
@@ -455,7 +404,7 @@ function renderDashboard(){
   const waiting=DB.enrollments.filter(e=>e.status==='WAITLIST').length;
   const openState=getSetting('enroll_open')!=='false';
 
-  const stat=(label,val,color,vw)=>`<div class="card" style="padding:16px 18px;flex:1;min-width:130px;cursor:${vw?'pointer':'default'};" ${vw?`onclick="setView('${vw}')"`:''}>
+  const stat=(label,val,color,vw)=>`<div class="statcard" style="padding:16px 18px;flex:1;min-width:130px;cursor:${vw?'pointer':'default'};border-left:3px solid ${color};" ${vw?`onclick="setView('${vw}')"`:''}>
     <div class="muted" style="font-size:12px;">${label}</div>
     <div style="font-size:26px;font-weight:700;color:${color};margin-top:2px;font-variant-numeric:tabular-nums;">${val}</div></div>`;
 
@@ -749,67 +698,77 @@ function explain(cid){
 }
 
 // ── 강좌 관리 ──
-// 강좌 상세: 담당 강사 + 신청 학생 명단 + 시간·장소
+// 강좌 상세: 담당 강사 + 신청 학생 명단(정보) + 시간·장소
 function courseDetail(id){
   const c=DB.courses.find(x=>x.id===id); if(!c)return;
   const enr=DB.enrollments.filter(e=>e.course_id===id);
   const enrolled=enr.filter(e=>e.status!=='WAITLIST');
   const waitlist=enr.filter(e=>e.status==='WAITLIST');
-  // 강사 아바타들
-  const instIds=(c.instructor_ids&&c.instructor_ids.length)?c.instructor_ids:(c.instructor_id?[c.instructor_id]:[]);
-  const avatar=(nm,color)=>{
+  const colors=['#b5893a','#5b8def','#2f8f6f','#a05bd0','#d05b8f','#5bb0d0','#c0692f','#7a8b2f'];
+  const avatar=(nm,i)=>{
     const ch=(nm||'?').trim().charAt(0);
-    return `<div style="width:44px;height:44px;border-radius:50%;background:${color};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:17px;">${ch}</div>`;
+    return `<div style="width:40px;height:40px;border-radius:50%;background:${colors[i%colors.length]};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex-shrink:0;">${ch}</div>`;
   };
-  const colors=['#5b8def','#e8825b','#2f8f6f','#a05bd0','#d05b8f','#5bb0d0','#c0a020','#7a8b2f'];
+  // 담당 강사
+  const instIds=(c.instructor_ids&&c.instructor_ids.length)?c.instructor_ids:(c.instructor_id?[c.instructor_id]:[]);
   const instHtml=instIds.length?instIds.map((iid,i)=>`
-    <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
-      ${avatar(name('instructors',iid),colors[i%colors.length])}
-      <span style="font-size:12.5px;font-weight:600;">${name('instructors',iid)}</span>
+    <div style="display:flex;align-items:center;gap:8px;">
+      ${avatar(name('instructors',iid),i)}
+      <span style="font-size:13.5px;font-weight:600;">${name('instructors',iid)}</span>
     </div>`).join(''):'<span class="muted">담당 강사 미지정</span>';
-  // 학생 아바타 그리드
-  const stuCard=(e,i)=>{
+  // 신청 학생 (정보 포함 행)
+  const stuRow=(e,i)=>{
     const st=DB.students.find(x=>x.id===e.student_id)||{};
     const paid=e.payment_status==='PAID';
-    return `<div style="display:flex;flex-direction:column;align-items:center;gap:5px;width:64px;cursor:pointer;" onclick="studentTimetable(${st.id})" title="시간표 보기">
-      ${avatar(st.name,colors[(i+3)%colors.length])}
-      <span style="font-size:12px;font-weight:600;text-align:center;line-height:1.2;">${st.name||'-'}</span>
-      <span style="font-size:10px;color:${paid?'#1f6b54':'#a32d2d'};">${paid?'완납':'미납'}</span>
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line-soft);">
+      ${avatar(st.name,i)}
+      <div style="flex:1;min-width:0;">
+        <div style="font-weight:600;font-size:13.5px;">${st.name||'-'} <span class="muted" style="font-weight:400;font-size:12px;">${st.grade!=null?gradeText(st.grade):''} ${st.school?'· '+st.school:''}</span></div>
+        <div class="muted" style="font-size:11.5px;">${st.parent_phone?'학부모 '+st.parent_phone:''}${st.student_phone?' · 본인 '+st.student_phone:''}</div>
+      </div>
+      <span style="font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;background:${paid?'#e6f2ec':'#fbe9e9'};color:${paid?'#1f6b54':'#a32d2d'};white-space:nowrap;">${paid?'완납':'미납'}</span>
+      <button class="btn sm ghost" onclick="studentTimetable(${st.id})" style="white-space:nowrap;">시간표</button>
     </div>`;
   };
-  const enrolledHtml=enrolled.length?enrolled.map(stuCard).join(''):'<span class="muted" style="font-size:13px;">아직 신청한 학생이 없습니다.</span>';
+  const enrolledHtml=enrolled.length?enrolled.map(stuRow).join(''):'<div class="muted" style="padding:12px 0;font-size:13px;">아직 신청한 학생이 없습니다.</div>';
   const waitHtml=waitlist.length?`
-    <div style="font-weight:600;font-size:13px;margin:16px 0 8px;color:var(--warn-ink);">대기 ${waitlist.length}명</div>
-    <div style="display:flex;flex-wrap:wrap;gap:14px;">${waitlist.map(stuCard).join('')}</div>`:'';
+    <div style="font-weight:600;font-size:12.5px;margin:14px 0 4px;color:var(--warn-ink);">대기 ${waitlist.length}명</div>
+    ${waitlist.map(stuRow).join('')}`:'';
   // 시간·장소
   const sessHtml=(c.sessions||[]).length?(c.sessions||[]).map(x=>
-    `<div style="display:flex;gap:10px;font-size:13.5px;padding:3px 0;">
-      <span style="font-weight:700;min-width:80px;">${WD[x.weekday]} ${hhmm(x.start_time)}~${hhmm(x.end_time)}</span>
+    `<div style="display:flex;gap:10px;font-size:13px;padding:3px 0;">
+      <span style="font-weight:600;min-width:120px;">${WD[x.weekday]} ${hhmm(x.start_time)}~${hhmm(x.end_time)}</span>
       <span class="muted">${x.room_id?name('rooms',x.room_id):'장소 미정'}</span>
     </div>`).join(''):'<span class="muted">시간 미정</span>';
 
+  const total=enrolled.reduce((sum,e)=>sum+(c.tuition||0),0);
+  const unpaidCnt=enrolled.filter(e=>e.payment_status==='UNPAID'||!e.payment_status).length;
+
   document.getElementById('modal').innerHTML=`
     <h3>${c.title} <button class="x" onclick="closeModal()">×</button></h3>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;">
       <span class="tag">${name('subjects',c.subject_id)}</span>
       <span class="tag" style="background:var(--line-soft);color:var(--ink-soft);">${name('target_groups',c.target_id)}</span>
-      ${c.tuition?`<span class="tag" style="background:#fef7e0;color:#8a6d1a;">${c.tuition.toLocaleString()}원</span>`:''}
+      ${c.tuition?`<span class="tag" style="background:#fef7e0;color:#8a6621;">${c.tuition.toLocaleString()}원</span>`:''}
       ${c.capacity?`<span class="tag" style="background:var(--line-soft);color:var(--ink-soft);">정원 ${c.capacity}명</span>`:''}
     </div>
 
-    <div style="background:var(--paper);border-radius:10px;padding:14px;margin-bottom:14px;">
-      <div style="font-weight:600;font-size:13px;margin-bottom:10px;">🕐 수업 시간·장소</div>
+    <div style="background:var(--paper);border-radius:10px;padding:13px 15px;margin-bottom:12px;">
+      <div style="font-weight:600;font-size:12.5px;margin-bottom:8px;color:var(--ink-soft);">🕐 수업 시간·장소</div>
       ${sessHtml}
     </div>
 
-    <div style="background:var(--paper);border-radius:10px;padding:14px;margin-bottom:14px;">
-      <div style="font-weight:600;font-size:13px;margin-bottom:12px;">👩‍🏫 담당 강사</div>
+    <div style="background:var(--paper);border-radius:10px;padding:13px 15px;margin-bottom:12px;">
+      <div style="font-weight:600;font-size:12.5px;margin-bottom:10px;color:var(--ink-soft);">👩‍🏫 담당 강사</div>
       <div style="display:flex;gap:20px;flex-wrap:wrap;">${instHtml}</div>
     </div>
 
-    <div style="background:var(--paper);border-radius:10px;padding:14px;">
-      <div style="font-weight:600;font-size:13px;margin-bottom:12px;">👥 신청 학생 <span class="muted" style="font-weight:400;">${enrolled.length}명</span></div>
-      <div style="display:flex;flex-wrap:wrap;gap:14px;">${enrolledHtml}</div>
+    <div style="background:var(--paper);border-radius:10px;padding:13px 15px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <div style="font-weight:600;font-size:12.5px;color:var(--ink-soft);">👥 신청 학생 ${enrolled.length}명</div>
+        <div class="muted" style="font-size:11.5px;">수강료 합계 ${total.toLocaleString()}원${unpaidCnt?` · 미납 ${unpaidCnt}명`:''}</div>
+      </div>
+      ${enrolledHtml}
       ${waitHtml}
     </div>
 
@@ -843,15 +802,15 @@ function renderCourses(){
     const s=sList.length?sList.join('<br>'):'-';
     const roomList=sess.map(x=>x.room_id?name('rooms',x.room_id):'-');
     const room=roomList.length?roomList.join('<br>'):'-';
-    return `<tr style="cursor:pointer;" onclick="courseDetail(${c.id})">
+    return `<tr>
       <td><span class="tag">${name('subjects',c.subject_id)}</span></td>
-      <td><b>${c.title}</b></td>
+      <td><b class="course-link" onclick="courseDetail(${c.id})" style="cursor:pointer;color:var(--brand);text-decoration:underline;text-underline-offset:2px;">${c.title}</b></td>
       <td style="white-space:nowrap;">${instNames(c)}</td>
       <td class="muted" style="white-space:nowrap;">${name('target_groups',c.target_id)}</td>
       <td class="muted" style="font-size:12px;white-space:nowrap;">${s}</td>
       <td class="muted" style="white-space:nowrap;">${room}</td>
       <td style="white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;">${c.tuition?c.tuition.toLocaleString()+'원':'-'}</td>
-      ${isAdmin()?`<td onclick="event.stopPropagation()"><div class="row-actions">
+      ${isAdmin()?`<td><div class="row-actions">
         <button class="btn sm" onclick="courseForm(${c.id})">수정</button>
         <button class="btn sm ghost" onclick="del('courses',${c.id})">삭제</button>
       </div></td>`:''}</tr>`;
@@ -1673,38 +1632,6 @@ async function delEvent(id){
   closeModal(); renderCalendar();
 }
 
-// 학생 계정 관리 (학생 그룹)
-async function renderStuAccounts(){
-  const main=document.getElementById('main');
-  main.innerHTML=head('학생 계정','학생 로그인 계정을 검색해 비밀번호 초기화·정보 수정·삭제할 수 있습니다.')+`
-    <div class="card" style="padding:16px;margin-bottom:18px;">
-      <div style="display:flex;gap:8px;">
-        <input id="stuSearch" placeholder="학생 이름 입력" style="flex:1;padding:9px 11px;border:1px solid var(--line);border-radius:8px;" onkeydown="if(event.key==='Enter')searchStudentAcct()">
-        <button class="btn primary" onclick="searchStudentAcct()">검색</button>
-      </div>
-      <div id="stuResults" style="margin-top:14px;"></div>
-    </div>`;
-}
-// 백업 화면 (설정 그룹)
-function renderBackup(){
-  const main=document.getElementById('main');
-  main.innerHTML=head('백업','전체 데이터를 구글 스프레드시트로 백업하거나, 항목별 엑셀로 내려받을 수 있습니다.')+`
-    <div class="card" style="padding:20px;margin-bottom:16px;">
-      <div style="font-weight:600;margin-bottom:6px;">📊 구글 시트 전체 백업</div>
-      <div class="muted" style="font-size:13px;margin-bottom:12px;">모든 데이터(강좌·학생·수강신청·명단 등)를 연결된 구글 스프레드시트로 보냅니다.</div>
-      <button class="btn primary" onclick="backupToSheet()">지금 전체 백업</button>
-    </div>
-    <div class="card" style="padding:20px;">
-      <div style="font-weight:600;margin-bottom:10px;">📥 항목별 엑셀 다운로드</div>
-      <div style="display:flex;flex-wrap:wrap;gap:8px;">
-        <button class="btn sm" onclick="exportExcel('courses')">강좌 목록</button>
-        <button class="btn sm" onclick="exportExcel('students')">학생 목록</button>
-        <button class="btn sm" onclick="exportExcel('enrollments')">수강신청 내역</button>
-        <button class="btn sm" onclick="exportExcel('roster')">전체 수강생 명단</button>
-        <button class="btn sm" onclick="exportExcel('course_roster')">강좌별 수강생 명단</button>
-      </div>
-    </div>`;
-}
 async function renderAccounts(){
   if(!isAdmin()){main.innerHTML=head('접근 불가','관리자만 사용할 수 있는 메뉴입니다.');return;}
   let teacherAccts=[];
@@ -1721,12 +1648,20 @@ async function renderAccounts(){
       ${a.login_id!=='admin'?`<button class="btn sm ghost" onclick="deleteAdminAcct(${a.id},'${(a.name||'').replace(/'/g,'')}')">삭제</button>`:''}
     </div></td></tr>`).join('');
 
-  main.innerHTML=head('계정관리','강사·관리자 계정을 만들고 관리합니다. (학생 계정은 학생 메뉴에서)')+`
+  main.innerHTML=head('계정관리','학생 이름으로 검색해 정보수정·비밀번호 초기화·삭제를 할 수 있어요.')+`
+    <div class="card" style="margin-bottom:22px;padding:16px;">
+      <div style="font-weight:600;margin-bottom:10px;">🔎 학생 검색 · 관리</div>
+      <div style="display:flex;gap:8px;">
+        <input id="stuSearch" placeholder="학생 이름 입력" style="flex:1;padding:9px 11px;border:1px solid var(--line);border-radius:8px;" onkeydown="if(event.key==='Enter')searchStudentAcct()">
+        <button class="btn primary" onclick="searchStudentAcct()">검색</button>
+      </div>
+      <div id="stuResults" style="margin-top:12px;"></div>
+    </div>
     <div class="card" style="margin-bottom:22px;padding:16px;">
       <div style="font-weight:600;margin-bottom:10px;">➕ 강사 계정 만들기</div>
       ${DB.instructors.length===0
         ? `<div class="banner" style="margin-bottom:0;">등록된 강사가 없습니다. 먼저 <b>기초자료 → 강사</b>에서 강사를 추가한 뒤 계정을 만들어 주세요.
-             <button class="btn sm" style="margin-left:8px;" onclick="masterTab='instructors';setGroup('settings');setView('master')">기초자료로 이동</button></div>`
+             <button class="btn sm" style="margin-left:8px;" onclick="masterTab='instructors';setView('master')">기초자료로 이동</button></div>`
         : `<div class="grid2" style="margin-bottom:8px;">
         <input id="ta_id" placeholder="강사 로그인 아이디" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;">
         <input id="ta_pw" placeholder="초기 비밀번호" style="padding:9px 11px;border:1px solid var(--line);border-radius:8px;">
@@ -2217,6 +2152,7 @@ function hasInst(c,instId){
 }
 
 // ════════ 구글 시트 백업 ════════
+document.getElementById('backupBtn').onclick=backupToSheet;
 async function backupToSheet(){
   closeDrawer();
   const btn=document.getElementById('backupBtn');
@@ -2517,19 +2453,23 @@ function renderLoginGate(){
   document.querySelectorAll('.navbtn').forEach(b=>b.style.display='');
   let g=document.getElementById('loginGate');
   if(!g){g=document.createElement('div');g.id='loginGate';document.body.appendChild(g);}
-  g.style.cssText='position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:var(--paper);z-index:100;padding:20px;';
+  g.style.cssText='position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#363636;z-index:100;padding:20px;';
   g.innerHTML=`
-    <div style="width:100%;max-width:360px;">
-      <div style="text-align:center;margin-bottom:22px;">
-        <div style="font-size:20px;font-weight:700;">플래닛 아카데미</div>
-        <div style="font-size:13px;color:var(--ink-soft);margin-top:3px;">관리자 · 강사 로그인</div>
+    <div style="width:100%;max-width:380px;">
+      <div style="text-align:center;margin-bottom:26px;">
+        <img src="icons/icon-192.png" alt="플래닛 아카데미" style="width:72px;height:72px;border-radius:18px;margin-bottom:14px;box-shadow:0 4px 20px rgba(0,0,0,.3);"
+          onerror="this.style.display='none'">
+        <div style="font-size:22px;font-weight:700;color:#fff;letter-spacing:-.02em;">플래닛 아카데미</div>
+        <div style="font-size:13px;color:#b5893a;margin-top:5px;font-weight:500;">FLANET MINISTRIES ACADEMY</div>
       </div>
-      <div class="card">
+      <div style="background:#fff;border-radius:16px;padding:26px 24px;box-shadow:0 10px 40px rgba(0,0,0,.25);">
+        <div style="font-size:14px;font-weight:600;color:var(--ink);margin-bottom:16px;text-align:center;">관리자 · 강사 로그인</div>
         <div class="field"><label>아이디</label><input id="ad_id" placeholder="아이디" autocomplete="username"></div>
         <div class="field"><label>비밀번호</label><input id="ad_pw" type="password" placeholder="비밀번호" autocomplete="current-password" onkeydown="if(event.key==='Enter')adminLogin()"></div>
-        <button class="btn primary" style="width:100%;" onclick="adminLogin()">로그인</button>
-        ${LIVE?'':'<p class="muted" style="font-size:12px;text-align:center;margin-top:10px;color:var(--ink-soft);">샘플 모드: 아무 값이나 입력하면 관리자로 들어갑니다.</p>'}
+        <button class="btn primary" style="width:100%;margin-top:6px;padding:11px;font-size:14px;" onclick="adminLogin()">로그인</button>
+        ${LIVE?'':'<p class="muted" style="font-size:12px;text-align:center;margin-top:12px;">샘플 모드: 아무 값이나 입력하면 관리자로 들어갑니다.</p>'}
       </div>
+      <div style="text-align:center;margin-top:16px;font-size:11px;color:#8a8a8a;">flanetacademy.com</div>
     </div>`;
 }
 // 로그인 이력 기록
@@ -2582,18 +2522,20 @@ function startApp(){
   const mh=document.getElementById('mobileHeader'); if(mh)mh.style.display='';
   // 메뉴 표시 초기화 후 역할별 적용
   document.querySelectorAll('.navbtn').forEach(b=>b.style.display='');
-  // 강사면 본인 강의로 시간표 필터 고정 + 그룹 제한 (학생·설정 그룹 숨김)
+  // 강사면 본인 강의로 시간표 필터 고정 + 메뉴 제한
   if(isTeacher()){
     ttFilter=currentAdmin.instructor_id;
     document.querySelectorAll('.navbtn').forEach(b=>{
-      if(['students','settings'].includes(b.dataset.group)) b.style.display='none';
+      if(['students','enrollments','notices','master','accounts'].includes(b.dataset.view)) b.style.display='none';
+      if(b.id==='backupBtn') b.style.display='none';
     });
   }
   // 연결 상태 표시에 로그인 정보 추가
   const txt=document.getElementById('connTxt');
   if(txt) txt.textContent=(currentAdmin.name)+' · '+(isAdmin()?'관리자':'강사');
-  curGroup='dashboard'; view='dashboard';
-  document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active',b.dataset.group==='dashboard'));
+  view='dashboard';
+  // 첫 화면 active 표시 동기화
+  document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
   render();
   // 관리자 로그인 시 종료된 학기 자동 감지 (백업+비활성화 안내)
   if(isAdmin()) setTimeout(()=>checkExpiredSemester(),800);
