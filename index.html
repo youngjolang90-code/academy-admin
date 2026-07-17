@@ -802,15 +802,15 @@ function renderCourses(){
     const s=sList.length?sList.join('<br>'):'-';
     const roomList=sess.map(x=>x.room_id?name('rooms',x.room_id):'-');
     const room=roomList.length?roomList.join('<br>'):'-';
-    return `<tr>
+    return `<tr class="course-row" onclick="courseDetail(${c.id})" style="cursor:pointer;">
       <td><span class="tag">${name('subjects',c.subject_id)}</span></td>
-      <td><b class="course-link" onclick="courseDetail(${c.id})" style="cursor:pointer;color:var(--brand);text-decoration:underline;text-underline-offset:2px;">${c.title}</b></td>
+      <td><b>${c.title}</b></td>
       <td style="white-space:nowrap;">${instNames(c)}</td>
       <td class="muted" style="white-space:nowrap;">${name('target_groups',c.target_id)}</td>
       <td class="muted" style="font-size:12px;white-space:nowrap;">${s}</td>
       <td class="muted" style="white-space:nowrap;">${room}</td>
       <td style="white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;">${c.tuition?c.tuition.toLocaleString()+'원':'-'}</td>
-      ${isAdmin()?`<td><div class="row-actions">
+      ${isAdmin()?`<td onclick="event.stopPropagation()"><div class="row-actions">
         <button class="btn sm" onclick="courseForm(${c.id})">수정</button>
         <button class="btn sm ghost" onclick="del('courses',${c.id})">삭제</button>
       </div></td>`:''}</tr>`;
