@@ -279,9 +279,15 @@ let DB = {
 const name = (arr,id) => (DB[arr].find(x=>x.id===id)||{}).name || (DB[arr].find(x=>x.id===id)||{}).label || '-';
 
 // ── 충돌 판정 ──
-function conflicts(){
+function conflicts(semId){
+  // semId 없으면 활성 학기(없으면 첫 학기) 기준
+  if(semId===undefined){
+    const sems=DB.semesters||[];
+    const act=sems.find(s=>s.is_active);
+    semId=act?act.id:(sems[0]?sems[0].id:null);
+  }
   let flat=[];
-  DB.courses.forEach(c=>(c.sessions||[]).forEach(s=>flat.push({...s,course:c})));
+  DB.courses.filter(c=>semId==null||c.semester_id===semId).forEach(c=>(c.sessions||[]).forEach(s=>flat.push({...s,course:c})));
   flat.forEach(f=>{f.room=false;f.grade=false;});
   const m=t=>{let[a,b]=t.split(':');return +a*60+ +b;};
   for(let i=0;i<flat.length;i++)for(let j=i+1;j<flat.length;j++){
@@ -444,6 +450,7 @@ function getSetting(key){
   return row?row.value:null;
 }
 async function toggleEnrollOpen(){
+  if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
   const cur=getSetting('enroll_open')!=='false';
   const next=cur?'false':'true';
   if(!confirm(cur?'수강신청을 마감할까요? (학생이 신청할 수 없게 됩니다)':'수강신청을 다시 열까요?'))return;
@@ -482,6 +489,7 @@ function renderNotices(){
     `<button class="btn primary" onclick="noticeForm()">+ 공지 작성</button>`)+connBanner()+rows;
 }
 function noticeForm(){
+  if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
   openModal('공지 작성',`
     <div class="field"><label>제목</label><input id="n_title" placeholder="예: 여름학기 신청 안내"></div>
     <div class="field"><label>내용</label><textarea id="n_body" rows="5" style="width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:8px;font-family:inherit;font-size:13.5px;" placeholder="공지 내용을 입력하세요"></textarea></div>
@@ -495,11 +503,13 @@ function noticeForm(){
     });
 }
 async function togglePin(id,pin){
+  if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
   if(LIVE){await sb.from('notices').update({pinned:pin}).eq('id',id);await loadAll();}
   else{const n=DB.notices.find(x=>x.id===id);if(n)n.pinned=pin;}
   renderNotices();
 }
 async function delNotice(id){
+  if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
   if(!confirm('이 공지를 삭제할까요?'))return;
   if(LIVE){await sb.from('notices').delete().eq('id',id);await loadAll();}
   else{DB.notices=DB.notices.filter(x=>x.id!==id);}
@@ -670,8 +680,10 @@ function renderTimetable(){
   const activeInsts=DB.instructors.filter(i=>activeInstIds.includes(i.id));
   const chips=`<button class="ttchip ${ttFilter==null?'on':''}" onclick="ttFilter=null;renderTimetable()">전체</button>`+
     activeInsts.map(i=>`<button class="ttchip ${ttFilter===i.id?'on':''}" onclick="ttFilter=${i.id};renderTimetable()">${i.name}</button>`).join('');
+  const sems=DB.semesters||[];
+  const actSem=sems.find(s=>s.is_active)||sems[0];
   const who = ttFilter==null ? '전체 강사' : ((DB.instructors.find(i=>i.id===ttFilter)||{}).name||'')+' 강사';
-  main.innerHTML=head('주간 시간표','강좌 칸을 누르면 충돌 상세를 볼 수 있어요. · 현재 보기: '+who,
+  main.innerHTML=head('주간 시간표',(actSem?`${actSem.name} · `:'')+'강좌 칸을 누르면 충돌 상세를 볼 수 있어요. · 현재 보기: '+who,
     `<button class="btn sm" id="ttImgBtn" onclick="exportTimetableImg(+document.getElementById('ttScale').value)">이미지 저장</button> <select id="ttScale" class="btn sm" style="padding:5px 8px;"><option value="2">2배(선명)</option><option value="1">1배(기본)</option><option value="3">3배(고화질)</option></select>`)+connBanner()+`
     <div class="ttfilter">${chips}</div>
     <div class="legend">
@@ -772,7 +784,7 @@ function courseDetail(id){
       ${waitHtml}
     </div>
 
-    ${isAdmin()?`<div class="modal-actions" style="margin-top:16px;"><button class="btn" onclick="closeModal();courseForm(${c.id})">강좌 수정</button></div>`:''}`;
+    ${canEdit()?`<div class="modal-actions" style="margin-top:16px;"><button class="btn" onclick="closeModal();courseForm(${c.id})">강좌 수정</button></div>`:''}`;
   document.getElementById('overlay').classList.add('show');
 }
 function renderCourses(){
@@ -810,13 +822,13 @@ function renderCourses(){
       <td class="muted" style="font-size:12px;white-space:nowrap;">${s}</td>
       <td class="muted" style="white-space:nowrap;">${room}</td>
       <td style="white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;">${c.tuition?c.tuition.toLocaleString()+'원':'-'}</td>
-      ${isAdmin()?`<td onclick="event.stopPropagation()"><div class="row-actions">
+      ${canEdit()?`<td onclick="event.stopPropagation()"><div class="row-actions">
         <button class="btn sm" onclick="courseForm(${c.id})">수정</button>
         <button class="btn sm ghost" onclick="del('courses',${c.id})">삭제</button>
       </div></td>`:''}</tr>`;
   }).join('');
 
-  const addBtn=isAdmin()?(selSem
+  const addBtn=canEdit()?(selSem
     ? `<button class="btn primary" onclick="courseForm(null,${selSem})">+ 이 학기에 강좌 추가</button>`
     : `<button class="btn primary" onclick="courseForm()">+ 강좌 추가</button>`):'';
 
@@ -824,9 +836,9 @@ function renderCourses(){
     `<button class="btn sm" onclick="exportExcel('courses')" style="margin-right:6px;">엑셀 저장</button>${addBtn}`)+connBanner()+`
     ${sems.length?`<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">${chips}</div>`:'<p class="muted" style="margin-bottom:12px;">등록된 학기가 없습니다. 기초자료 → 학기에서 먼저 추가하세요.</p>'}
     <div class="card" style="overflow-x:auto;"><table><thead><tr>
-      <th>과목</th><th>강좌명</th><th>강사</th><th>대상</th><th>요일·시간</th><th>장소</th><th style="text-align:right;">수강료</th>${isAdmin()?'<th></th>':''}
-    </tr></thead><tbody>${rows||`<tr><td colspan="${isAdmin()?8:7}" class="empty">${selSemObj?selSemObj.name+'에 강좌가 없습니다.':'강좌가 없습니다.'}</td></tr>`}</tbody></table></div>
-    ${!isAdmin()?'<p class="muted" style="font-size:12px;margin-top:10px;">강좌 등록·수정·삭제는 관리자만 할 수 있습니다.</p>':''}`;
+      <th>과목</th><th>강좌명</th><th>강사</th><th>대상</th><th>요일·시간</th><th>장소</th><th style="text-align:right;">수강료</th>${canEdit()?'<th></th>':''}
+    </tr></thead><tbody>${rows||`<tr><td colspan="${canEdit()?8:7}" class="empty">${selSemObj?selSemObj.name+'에 강좌가 없습니다.':'강좌가 없습니다.'}</td></tr>`}</tbody></table></div>
+    ${!canEdit()?'<p class="muted" style="font-size:12px;margin-top:10px;">강좌 등록·수정·삭제는 관리자만 할 수 있습니다.</p>':''}`;
 }
 // 선택+직접입력 겸용 칸 + 자동완성 목록 생성
 function combo(inputId,arr,curId,lbl){
@@ -907,6 +919,7 @@ async function resolveId(arr,inputId){
   }
 }
 function courseForm(id,semId){
+  if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
   const c=id?DB.courses.find(x=>x.id===id):{sessions:[{}]};
   const sessions=(c.sessions&&c.sessions.length)?c.sessions:[{}];
   // 회차 행 HTML 하나 생성
@@ -1203,7 +1216,7 @@ function enrollCard(s){
     const payBtn=ps==='UNPAID'
       ? `<button class="btn sm" onclick="payOneEnr(${e.id})">완납</button>`
       : (ps==='PAID'?`<button class="btn sm ghost" onclick="setPayEnr(${e.id},'UNPAID')">미납전환</button>`:'');
-    const delBtn=isAdmin()
+    const delBtn=canEdit()
       ? `<button class="btn sm ghost" style="color:#a32d2d;" onclick="delEnrollment(${e.id})" title="신청 취소">신청취소</button>`
       : '';
     return `<tr>
@@ -1236,7 +1249,7 @@ function enrollCard(s){
 
 // 관리자 직권 신청 취소 (수강신청 내역 삭제)
 async function delEnrollment(enrollId){
-  if(!isAdmin()){alert('관리자만 신청을 취소할 수 있습니다.');return;}
+  if(!canEdit()){alert('관리자만 신청을 취소할 수 있습니다.');return;}
   const e=DB.enrollments.find(x=>x.id===enrollId); if(!e)return;
   const st=DB.students.find(x=>x.id===e.student_id)||{};
   const c=DB.courses.find(x=>x.id===e.course_id)||{};
@@ -1257,6 +1270,7 @@ async function delEnrollment(enrollId){
 // 수강신청 관리: 강좌 하나 완납/전환
 async function payOneEnr(enrollId){ await setPayEnr(enrollId,'PAID'); }
 async function setPayEnr(enrollId,status){
+  if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
   if(LIVE){
     const{error}=await sb.from('enrollments').update({payment_status:status}).eq('id',enrollId);
     if(error){alert('오류: '+error.message);return;}
@@ -1268,6 +1282,7 @@ async function setPayEnr(enrollId,status){
 }
 // 한 학생의 미납 강좌 전체를 완납 처리
 async function payAllForStudent(sid){
+  if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
   const st=DB.students.find(x=>x.id===sid); if(!st)return;
   const unpaid=DB.enrollments.filter(e=>e.student_id===sid&&(e.payment_status==='UNPAID'||!e.payment_status));
   if(!unpaid.length){alert('미납 강좌가 없습니다.');return;}
@@ -1375,6 +1390,7 @@ async function payOneInDetail(enrollId,sid){
   studentDetail(sid); // 모달 갱신
 }
 function studentForm(id){
+  if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
   const s=id?DB.students.find(x=>x.id===id):{};
   openModal(id?'학생 수정':'학생 추가',`
     <div class="field"><label>이름</label><input id="s_name" value="${(s.name||'').replace(/"/g,'&quot;')}"></div>
@@ -1460,7 +1476,7 @@ function renderCalendar(){
     (DB.schools||[]).map(s=>`<button class="ttchip ${calSchoolFilter===s.id?'on':''}" onclick="calSchoolFilter=${s.id};renderCalendar()">${s.name}</button>`).join('');
 
   main.innerHTML=head('학사 캘린더','학교별 시험·방학·개학 일정을 관리합니다. 날짜를 누르면 상세/추가할 수 있어요.',
-    isAdmin()?`<button class="btn primary" onclick="eventForm()">+ 일정 추가</button>`:'')+`
+    canEdit()?`<button class="btn primary" onclick="eventForm()">+ 일정 추가</button>`:'')+`
     <div class="ttfilter">${schoolChips}</div>
     <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-bottom:12px;">
       <button class="btn sm" onclick="calMove(-1)">‹ 이전</button>
@@ -1511,13 +1527,14 @@ function dayDetail(ds){
       <div><span class="tag" style="background:${(EVENT_COLOR[e.type]||'#777')}22;color:${EVENT_COLOR[e.type]||'#777'};">${EVENT_TYPE[e.type]||e.type}</span> <b>${e.title}</b></div>
       <div class="muted" style="font-size:12px;">${sc?sc.name+' · ':''}${range}</div>
       ${examHtml}
-      ${isAdmin()?`<div class="row-actions" style="margin-top:5px;"><button class="btn sm" onclick="closeModal();eventForm(${e.id})">수정</button><button class="btn sm ghost" onclick="delEvent(${e.id})">삭제</button></div>`:''}
+      ${canEdit()?`<div class="row-actions" style="margin-top:5px;"><button class="btn sm" onclick="closeModal();eventForm(${e.id})">수정</button><button class="btn sm ghost" onclick="delEvent(${e.id})">삭제</button></div>`:''}
     </div>`;
   }).join(''):'<div class="muted" style="padding:10px 0;">이 날짜에 등록된 일정이 없습니다.</div>';
-  openModal(`${ds} 일정`,body+(isAdmin()?`<button class="btn primary" style="width:100%;margin-top:10px;" onclick="closeModal();eventForm(null,'${ds}')">+ 이 날짜에 일정 추가</button>`:''),null);
+  openModal(`${ds} 일정`,body+(canEdit()?`<button class="btn primary" style="width:100%;margin-top:10px;" onclick="closeModal();eventForm(null,'${ds}')">+ 이 날짜에 일정 추가</button>`:''),null);
   const sb2=document.getElementById('saveBtn'); if(sb2)sb2.style.display='none';
 }
 function eventForm(id,presetDate){
+  if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
   const e=id?(DB.school_events.find(x=>x.id===id)||{}):{start_date:presetDate||''};
   const curSchool=e.school_id?((DB.schools.find(s=>s.id===e.school_id)||{}).name||''):'';
   const schoolOpts=(DB.schools||[]).map(s=>`<option value="${(s.name||'').replace(/"/g,'&quot;')}">`).join('');
@@ -1626,6 +1643,7 @@ function collectExamRows(){
   return out.length?out:null;
 }
 async function delEvent(id){
+  if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
   if(!confirm('이 일정을 삭제할까요?'))return;
   if(LIVE){const{error}=await sb.from('school_events').delete().eq('id',id);if(error){alert(error.message);return;}await loadAll();}
   else{DB.school_events=DB.school_events.filter(x=>x.id!==id);}
@@ -1755,6 +1773,7 @@ async function searchStudentAcct(){
   }).join('');
 }
 async function resetStudentPwById(id,nm2){
+  if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
   if(!confirm(`'${nm2}' 학생의 비밀번호를 0000으로 초기화할까요?`))return;
   const ph=await hashPw('0000');
   const r=await sb.rpc('admin_reset_student_pw',{p_student_id:id,p_new_hash:ph});
@@ -1762,6 +1781,7 @@ async function resetStudentPwById(id,nm2){
   alert(`초기화 완료.\n'${nm2}' 학생의 임시 비밀번호: 0000\n로그인 후 변경하도록 안내해 주세요.`);
 }
 function editStudentAcct(id){
+  if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
   const s=(window._acctSearch||[]).find(x=>x.id===id)||{};
   const grade=s.grade;
   openModal('학생 정보 수정',`
@@ -1786,12 +1806,14 @@ function editStudentAcct(id){
     });
 }
 async function deleteStudentAcct(id,nm2){
+  if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
   if(!confirm(`'${nm2}' 학생을 삭제할까요?\n이 학생의 수강신청 내역도 함께 삭제됩니다.`))return;
   const r=await sb.rpc('admin_delete_student',{p_id:id});
   if(r.error){alert('삭제 오류: '+r.error.message);return;}
   await loadAll(); alert('삭제되었습니다.'); searchStudentAcct();
 }
 async function resetAdminPw(id,nm2){
+  if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
   if(!LIVE){alert('샘플 모드에서는 동작하지 않습니다.');return;}
   if(!confirm(`'${nm2}' 계정의 비밀번호를 0000으로 초기화할까요?`))return;
   const ph=await hashPw('0000');
@@ -1800,12 +1822,14 @@ async function resetAdminPw(id,nm2){
   alert('초기화 완료. 임시 비밀번호: 0000');
 }
 async function deleteAdminAcct(id,nm2){
+  if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
   if(!confirm(`강사 계정 '${nm2}'을 삭제할까요?`))return;
   const r=await sb.rpc('admin_delete_admin',{p_id:id});
   if(r.error){alert('삭제 오류: '+r.error.message);return;}
   alert('삭제되었습니다.'); renderAccounts();
 }
 async function createTeacherAcct(){
+  if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
   const lid=document.getElementById('ta_id').value.trim();
   const pw=document.getElementById('ta_pw').value.trim();
   const inst=document.getElementById('ta_inst').value;
@@ -1856,6 +1880,7 @@ function renderMaster(){
 }
 // 학기 활성화 (하나만 활성)
 async function activateSemester(id){
+  if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
   if(LIVE){
     await sb.from('semesters').update({is_active:false}).neq('id',0); // 전체 비활성
     const{error}=await sb.from('semesters').update({is_active:true}).eq('id',id);
@@ -1868,6 +1893,7 @@ async function activateSemester(id){
 }
 // 학기 수정 (이름·기간·활성)
 function semesterEdit(id){
+  if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
   const s=DB.semesters.find(x=>x.id===id); if(!s)return;
   openModal('학기 수정',`
     <div class="field"><label>학기명</label><input id="se_name" value="${(s.name||'').replace(/"/g,'&quot;')}"></div>
@@ -1888,6 +1914,7 @@ function semesterEdit(id){
 }
 // 학기 안전 삭제 (강좌가 있으면 막음)
 async function delSemester(id){
+  if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
   const cnt=DB.courses.filter(c=>c.semester_id===id).length;
   if(cnt>0){
     alert(`이 학기에 강좌 ${cnt}개가 속해 있어 삭제할 수 없습니다.\n\n먼저 강좌를 다른 학기로 옮기거나 삭제해 주세요.\n(실수로 전체 강좌가 지워지는 것을 막기 위한 보호입니다.)`);
@@ -1914,6 +1941,7 @@ async function checkExpiredSemester(){
   }
 }
 function masterForm(){
+  if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
   const t=masterTab;
   let body;
   if(t==='semesters') body=`
@@ -1957,7 +1985,51 @@ function closeModal(){document.getElementById('overlay').classList.remove('show'
 document.getElementById('overlay').onclick=e=>{if(e.target.id==='overlay')closeModal();};
 
 // 저장: Supabase 연결 시 DB에, 아니면 메모리(샘플)에
+// 강좌 충돌 검사: 같은 학기 안에서 시간이 겹치면서 (장소가 같거나 / 대상 학년이 겹치는) 경우
+// 반환: 충돌 사유 문자열 (충돌 없으면 빈 문자열)
+function checkCourseConflict(editId, obj, semId){
+  const m=t=>{let[a,b]=(t||'0:0').split(':');return +a*60+ +b;};
+  const overlap=(s1,e1,s2,e2)=>m(s1)<m(e2)&&m(s2)<m(e1);
+  // 이 강좌의 대상 학년 범위
+  const myT=DB.target_groups.find(t=>t.id===obj.target_id)||{};
+  const problems=[];
+  // 같은 학기의 다른 강좌들과 비교 (자기 자신 제외)
+  const others=DB.courses.filter(c=>c.semester_id===semId && c.id!==editId);
+  for(const mySes of obj.sessions){
+    if(!mySes.weekday||!mySes.start_time||!mySes.end_time) continue;
+    for(const oc of others){
+      const otherT=DB.target_groups.find(t=>t.id===oc.target_id)||{};
+      for(const os of (oc.sessions||[])){
+        if(os.weekday!==mySes.weekday) continue;
+        if(!overlap(mySes.start_time,mySes.end_time,os.start_time,os.end_time)) continue;
+        const timeStr=`${WD[mySes.weekday]} ${hhmm(mySes.start_time)}~${hhmm(mySes.end_time)}`;
+        // 장소 충돌
+        if(mySes.room_id && os.room_id && mySes.room_id===os.room_id){
+          problems.push(`• [장소 충돌] ${timeStr} · ${name('rooms',mySes.room_id)}\n   → 「${oc.title}」 강좌가 같은 시간·같은 장소를 사용 중입니다.`);
+        }
+        // 학년(대상) 충돌 — 단, 성별이 다르면(남반 vs 여반) 겹치지 않음
+        const genderClash = !myT.gender||!otherT.gender||myT.gender==='공용'||otherT.gender==='공용'||myT.gender===otherT.gender;
+        if(myT.grade_from!=null&&otherT.grade_from!=null&& genderClash &&
+           myT.grade_from<=otherT.grade_to && otherT.grade_from<=myT.grade_to){
+          problems.push(`• [학년 충돌] ${timeStr}\n   → 「${oc.title}」(${name('target_groups',oc.target_id)}) 강좌와 대상 학년이 겹칩니다.`);
+        }
+      }
+    }
+  }
+  if(!problems.length) return '';
+  // 중복 제거
+  const uniq=[...new Set(problems)];
+  return '⚠ 시간표가 겹쳐 등록할 수 없습니다.\n\n'+uniq.join('\n\n')+'\n\n시간·장소·대상 학년을 조정한 뒤 다시 저장해 주세요.';
+}
 async function save(table,id,obj){
+  if(!canEdit()){alert('읽기 전용 계정은 등록·수정할 수 없습니다.');return;}
+  // ── 강좌 저장 전 충돌 검사 (같은 학기 내 시간+장소 겹침, 시간+학년 겹침) ──
+  if(table==='courses' && obj.sessions && obj.sessions.length){
+    const semId = obj.semester_id || (id ? (DB.courses.find(c=>c.id===id)||{}).semester_id : null)
+      || ((DB.semesters||[]).find(s=>s.is_active)||(DB.semesters||[])[0]||{}).id;
+    const conflictMsg = checkCourseConflict(id, obj, semId);
+    if(conflictMsg){ alert(conflictMsg); return; }
+  }
   if(LIVE){
     if(table==='courses'){
       // 강좌 본체 저장 (강사 정보는 별도 테이블이므로 payload에서 제외)
@@ -2006,6 +2078,7 @@ async function save(table,id,obj){
   }
 }
 async function del(table,id){
+  if(!canEdit()){alert('읽기 전용 계정은 삭제할 수 없습니다.');return;}
   // 강좌 삭제 시엔 연결된 신청·세션·강사연결을 먼저 정리
   if(table==='courses'){
     const enrCount=DB.enrollments.filter(e=>e.course_id===id).length;
@@ -2442,8 +2515,11 @@ async function hashPw(pw){
   const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pw+'_flanet'));
   return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
 }
-function isAdmin(){return currentAdmin && currentAdmin.role==='SUPER_ADMIN';}
+function isAdmin(){return currentAdmin && (currentAdmin.role==='SUPER_ADMIN'||currentAdmin.role==='VIEWER');}
 function isTeacher(){return currentAdmin && currentAdmin.role==='TEACHER';}
+// 편집 권한: VIEWER(읽기전용)와 TEACHER는 편집 불가, SUPER_ADMIN만 가능
+function canEdit(){return currentAdmin && currentAdmin.role==='SUPER_ADMIN';}
+function isViewer(){return currentAdmin && currentAdmin.role==='VIEWER';}
 
 function renderLoginGate(){
   document.querySelector('.layout').style.display='none';
@@ -2532,7 +2608,7 @@ function startApp(){
   }
   // 연결 상태 표시에 로그인 정보 추가
   const txt=document.getElementById('connTxt');
-  if(txt) txt.textContent=(currentAdmin.name)+' · '+(isAdmin()?'관리자':'강사');
+  if(txt) txt.textContent=(currentAdmin.name)+' · '+(isViewer()?'읽기전용':canEdit()?'관리자':'강사');
   view='dashboard';
   // 첫 화면 active 표시 동기화
   document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
