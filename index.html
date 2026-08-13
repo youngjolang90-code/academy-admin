@@ -850,6 +850,8 @@ function parseSchedule(str){
   return {sessions:out,errs};
 }
 function showBulkPreview(parsed){
+  // 등록 대상 학기 (미등록 판정용)
+  const semId=_bulkSemId||((DB.semesters||[]).find(s=>s.is_active)||(DB.semesters||[])[0]||{}).id;
   // 각 행 검증
   const results=parsed.map(p=>{
     const problems=[];
@@ -857,53 +859,69 @@ function showBulkPreview(parsed){
     if(subject_id===undefined)problems.push(`과목 '${p.subject}' 없음`);
     const target_id=findId('target_groups',p.target,'label');
     if(target_id===undefined)problems.push(`대상 '${p.target}' 없음`);
-    // 강사 (여러 명)
     const instIds=[]; 
     p.instructors.split(',').forEach(nm=>{
       nm=nm.trim(); if(!nm)return;
       const x=DB.instructors.find(i=>(i.name||'').trim()===nm);
       if(x)instIds.push(x.id); else problems.push(`강사 '${nm}' 없음`);
     });
-    // 일정
     const {sessions,errs}=parseSchedule(p.schedule);
     errs.forEach(e=>problems.push(`일정 형식 오류: '${e}'`));
     sessions.forEach(s=>{ if(s.room_id===undefined)problems.push(`장소 '${s.room_name}' 없음`); });
     if(!sessions.length)problems.push('수업일정 없음');
-    return {p,subject_id,target_id,instIds,sessions,problems};
+    // 이미 등록됐는지 (같은 학기 + 같은 강좌명)
+    const dup=DB.courses.some(c=>c.semester_id===semId && (c.title||'').trim()===p.title.trim());
+    // 상태 판정: dup > problem > ok
+    let status='ok';
+    if(problems.length) status='problem';
+    else if(dup) status='dup';
+    return {p,subject_id,target_id,instIds,sessions,problems,dup,status};
   });
   _bulkRows=results;
-  const okCnt=results.filter(r=>!r.problems.length).length;
-  const ngCnt=results.length-okCnt;
-  const rowHtml=results.map((r,i)=>{
-    const ok=!r.problems.length;
+  const okRows=results.filter(r=>r.status==='ok');
+  const dupCnt=results.filter(r=>r.status==='dup').length;
+  const ngCnt=results.filter(r=>r.status==='problem').length;
+
+  const badge=st=>st==='ok'?'<span style="color:#1f6b54;">✅ 등록</span>'
+    :st==='dup'?'<span style="color:#8a6621;">↷ 이미있음</span>'
+    :'<span style="color:#a32d2d;">⚠️ 문제</span>';
+  const rowHtml=results.map(r=>{
+    const bg=r.status==='ok'?'':r.status==='dup'?'#fdf6e6':'#fdecec';
     const sesTxt=r.sessions.map(s=>`${['','월','화','수','목','금','토','일'][s.weekday]} ${s.start_time}~${s.end_time} ${s.room_name}`).join(' / ');
-    return `<tr style="background:${ok?'':'#fdecec'};">
-      <td style="text-align:center;">${ok?'✅':'⚠️'}</td>
+    const note=r.status==='dup'?'이미 등록된 강좌 (건너뜀)':r.problems.join('<br>');
+    return `<tr style="background:${bg};">
+      <td style="text-align:center;white-space:nowrap;font-size:11.5px;">${badge(r.status)}</td>
       <td><b>${r.p.title}</b><div class="muted" style="font-size:11px;">${r.p.subject} · ${r.p.target}</div></td>
       <td class="muted" style="font-size:11.5px;">${sesTxt||'-'}</td>
-      <td style="font-size:11.5px;color:#a32d2d;">${r.problems.join('<br>')||''}</td>
+      <td style="font-size:11.5px;color:${r.status==='dup'?'#8a6621':'#a32d2d'};">${note||''}</td>
     </tr>`;
   }).join('');
   openModal('엑셀 강좌 일괄등록 미리보기',`
     <div style="margin-bottom:12px;font-size:13.5px;">
-      총 <b>${results.length}</b>건 · <span style="color:#1f6b54;">등록 가능 ${okCnt}건</span>${ngCnt?` · <span style="color:#a32d2d;">문제 ${ngCnt}건</span>`:''}
+      총 <b>${results.length}</b>건 ·
+      <span style="color:#1f6b54;">신규 등록 ${okRows.length}건</span>
+      ${dupCnt?` · <span style="color:#8a6621;">이미있음 ${dupCnt}건</span>`:''}
+      ${ngCnt?` · <span style="color:#a32d2d;">문제 ${ngCnt}건</span>`:''}
     </div>
     <div style="max-height:50vh;overflow:auto;border:1px solid var(--line);border-radius:8px;">
-      <table><thead><tr><th style="width:36px;"></th><th>강좌</th><th>수업일정</th><th>문제</th></tr></thead>
+      <table><thead><tr><th style="width:70px;">상태</th><th>강좌</th><th>수업일정</th><th>비고</th></tr></thead>
       <tbody>${rowHtml}</tbody></table>
     </div>
-    <div class="muted" style="font-size:12px;margin-top:10px;">⚠️ 문제가 있는 강좌는 등록되지 않습니다. 엑셀을 수정 후 다시 올려주세요. 시간·장소·학년 충돌은 등록 시 한 번 더 검사됩니다.</div>
+    <div class="muted" style="font-size:12px;margin-top:10px;">
+      • <b>신규</b>만 등록됩니다. <b>이미있음</b>(같은 학기에 같은 강좌명)은 중복 방지를 위해 건너뜁니다.<br>
+      • 등록 시 같은 시간·<b>같은 장소</b> 충돌이 있으면 그 강좌만 제외되고, <b>학년 겹침</b>은 경고만 표시됩니다.
+    </div>
     <div class="modal-actions" style="margin-top:16px;">
       <button class="btn" onclick="closeModal()">취소</button>
-      <button class="btn primary" onclick="runBulkInsert()" ${okCnt?'':'disabled'}>등록 가능한 ${okCnt}건 등록</button>
+      <button class="btn primary" onclick="runBulkInsert()" ${okRows.length?'':'disabled'}>신규 ${okRows.length}건 등록</button>
     </div>`);
 }
 async function runBulkInsert(){
   if(!_bulkRows)return;
-  const okRows=_bulkRows.filter(r=>!r.problems.length);
-  if(!okRows.length){alert('등록 가능한 강좌가 없습니다.');return;}
+  const okRows=_bulkRows.filter(r=>r.status==='ok'); // 신규만 (문제·중복 제외)
+  if(!okRows.length){alert('새로 등록할 강좌가 없습니다.');return;}
   closeModal();
-  let done=0, skipped=[];
+  let done=0, skipped=[], warned=[];
   for(const r of okRows){
     const obj={
       subject_id:r.subject_id, target_id:r.target_id, title:r.p.title,
@@ -914,17 +932,20 @@ async function runBulkInsert(){
       instructor_ids:r.instIds
     };
     if(_bulkSemId)obj.semester_id=_bulkSemId;
-    // 충돌 검사 (save 안에서도 하지만, 여기서 미리 걸러 조용히 건너뜀 대신 수집)
     const semId=obj.semester_id||((DB.semesters||[]).find(s=>s.is_active)||(DB.semesters||[])[0]||{}).id;
     const conflict=checkCourseConflict(null,obj,semId);
-    if(conflict){ skipped.push(`「${r.p.title}」\n${conflict.replace(/^⚠[^\n]*\n\n/,'')}`); continue; }
+    // 장소 충돌 → 건너뜀
+    if(conflict.block){ skipped.push(`「${r.p.title}」 — 같은 시간·장소 충돌`); continue; }
+    // 학년 겹침 → 등록은 하되 경고 수집
+    if(conflict.warn){ warned.push(`「${r.p.title}」와 겹침:\n${conflict.warn}`); }
     await saveBulkOne(obj);
     done++;
   }
   await loadAll();
   render();
-  let msg=`✅ ${done}건 등록 완료`;
-  if(skipped.length)msg+=`\n\n⚠️ ${skipped.length}건은 시간/장소/학년 충돌로 건너뛰었습니다:\n\n`+skipped.join('\n\n');
+  let msg=`✅ ${done}건 신규 등록 완료`;
+  if(skipped.length)msg+=`\n\n⛔ ${skipped.length}건은 장소 충돌로 제외:\n`+skipped.join('\n');
+  if(warned.length)msg+=`\n\n⚠️ 아래는 등록됐지만 같은 시간에 학년이 겹치는 강좌가 있습니다 (다른 장소라 등록됨):\n\n`+warned.join('\n\n');
   alert(msg);
 }
 // save의 강좌 저장 로직만 떼어낸 조용한 버전 (alert 없이)
@@ -2149,15 +2170,15 @@ function closeModal(){document.getElementById('overlay').classList.remove('show'
 document.getElementById('overlay').onclick=e=>{if(e.target.id==='overlay')closeModal();};
 
 // 저장: Supabase 연결 시 DB에, 아니면 메모리(샘플)에
-// 강좌 충돌 검사: 같은 학기 안에서 시간이 겹치면서 (장소가 같거나 / 대상 학년이 겹치는) 경우
-// 반환: 충돌 사유 문자열 (충돌 없으면 빈 문자열)
+// 강좌 충돌 검사
+// 반환: {block:'막는 사유(장소겹침)', warn:'경고 사유(학년겹침)'}
+// - 장소 충돌 = 등록 차단 (같은 시간·같은 장소는 물리적으로 불가능)
+// - 학년 충돌 = 경고만 (같은 시간 다른 장소는 학원에선 정상)
 function checkCourseConflict(editId, obj, semId){
   const m=t=>{let[a,b]=(t||'0:0').split(':');return +a*60+ +b;};
   const overlap=(s1,e1,s2,e2)=>m(s1)<m(e2)&&m(s2)<m(e1);
-  // 이 강좌의 대상 학년 범위
   const myT=DB.target_groups.find(t=>t.id===obj.target_id)||{};
-  const problems=[];
-  // 같은 학기의 다른 강좌들과 비교 (자기 자신 제외)
+  const blockProblems=[], warnProblems=[];
   const others=DB.courses.filter(c=>c.semester_id===semId && c.id!==editId);
   for(const mySes of obj.sessions){
     if(!mySes.weekday||!mySes.start_time||!mySes.end_time) continue;
@@ -2167,23 +2188,22 @@ function checkCourseConflict(editId, obj, semId){
         if(os.weekday!==mySes.weekday) continue;
         if(!overlap(mySes.start_time,mySes.end_time,os.start_time,os.end_time)) continue;
         const timeStr=`${WD[mySes.weekday]} ${hhmm(mySes.start_time)}~${hhmm(mySes.end_time)}`;
-        // 장소 충돌
+        // 장소 충돌 → 차단
         if(mySes.room_id && os.room_id && mySes.room_id===os.room_id){
-          problems.push(`• [장소 충돌] ${timeStr} · ${name('rooms',mySes.room_id)}\n   → 「${oc.title}」 강좌가 같은 시간·같은 장소를 사용 중입니다.`);
+          blockProblems.push(`• [장소 충돌] ${timeStr} · ${name('rooms',mySes.room_id)}\n   → 「${oc.title}」 강좌가 같은 시간·같은 장소를 사용 중입니다.`);
         }
-        // 학년(대상) 충돌 — 단, 성별이 다르면(남반 vs 여반) 겹치지 않음
+        // 학년 충돌 → 경고만 (성별 다르면 제외)
         const genderClash = !myT.gender||!otherT.gender||myT.gender==='공용'||otherT.gender==='공용'||myT.gender===otherT.gender;
         if(myT.grade_from!=null&&otherT.grade_from!=null&& genderClash &&
            myT.grade_from<=otherT.grade_to && otherT.grade_from<=myT.grade_to){
-          problems.push(`• [학년 충돌] ${timeStr}\n   → 「${oc.title}」(${name('target_groups',oc.target_id)}) 강좌와 대상 학년이 겹칩니다.`);
+          warnProblems.push(`• [학년 겹침] ${timeStr} · 「${oc.title}」(${name('target_groups',oc.target_id)})`);
         }
       }
     }
   }
-  if(!problems.length) return '';
-  // 중복 제거
-  const uniq=[...new Set(problems)];
-  return '⚠ 시간표가 겹쳐 등록할 수 없습니다.\n\n'+uniq.join('\n\n')+'\n\n시간·장소·대상 학년을 조정한 뒤 다시 저장해 주세요.';
+  const block=blockProblems.length?('⚠ 같은 시간·같은 장소를 쓰는 강좌가 있어 등록할 수 없습니다.\n\n'+[...new Set(blockProblems)].join('\n\n')+'\n\n시간이나 장소를 조정한 뒤 다시 저장해 주세요.'):'';
+  const warn=warnProblems.length?[...new Set(warnProblems)].join('\n'):'';
+  return {block, warn};
 }
 async function save(table,id,obj){
   if(!canEdit()){alert('읽기 전용 계정은 등록·수정할 수 없습니다.');return;}
@@ -2191,8 +2211,8 @@ async function save(table,id,obj){
   if(table==='courses' && obj.sessions && obj.sessions.length){
     const semId = obj.semester_id || (id ? (DB.courses.find(c=>c.id===id)||{}).semester_id : null)
       || ((DB.semesters||[]).find(s=>s.is_active)||(DB.semesters||[])[0]||{}).id;
-    const conflictMsg = checkCourseConflict(id, obj, semId);
-    if(conflictMsg){ alert(conflictMsg); return; }
+    const conflict = checkCourseConflict(id, obj, semId);
+    if(conflict.block){ alert(conflict.block); return; }
   }
   if(LIVE){
     if(table==='courses'){
