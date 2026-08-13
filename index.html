@@ -762,6 +762,7 @@ function courseDetail(id){
       <span class="tag">${name('subjects',c.subject_id)}</span>
       <span class="tag" style="background:var(--line-soft);color:var(--ink-soft);">${name('target_groups',c.target_id)}</span>
       ${c.tuition?`<span class="tag" style="background:#fef7e0;color:#8a6621;">${c.tuition.toLocaleString()}원</span>`:''}
+      <span class="tag" style="background:var(--line-soft);color:var(--ink-soft);">주 ${c.sessions_per_week||(c.sessions||[]).length||'-'}회</span>
       ${c.capacity?`<span class="tag" style="background:var(--line-soft);color:var(--ink-soft);">정원 ${c.capacity}명</span>`:''}
     </div>
 
@@ -1038,6 +1039,7 @@ function renderCourses(){
       <td><b>${c.title}</b></td>
       <td style="white-space:nowrap;">${instNames(c)}</td>
       <td class="muted" style="white-space:nowrap;">${name('target_groups',c.target_id)}</td>
+      <td class="muted" style="text-align:center;white-space:nowrap;">${c.sessions_per_week||(c.sessions||[]).length||'-'}회</td>
       <td class="muted" style="font-size:12px;white-space:nowrap;">${s}</td>
       <td class="muted" style="white-space:nowrap;">${room}</td>
       <td style="white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;">${c.tuition?c.tuition.toLocaleString()+'원':'-'}</td>
@@ -1055,7 +1057,7 @@ function renderCourses(){
     `<button class="btn sm" onclick="exportExcel('courses')" style="margin-right:6px;">엑셀 저장</button>${addBtn}`)+connBanner()+`
     ${sems.length?`<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">${chips}</div>`:'<p class="muted" style="margin-bottom:12px;">등록된 학기가 없습니다. 기초자료 → 학기에서 먼저 추가하세요.</p>'}
     <div class="card" style="overflow-x:auto;"><table><thead><tr>
-      <th>과목</th><th>강좌명</th><th>강사</th><th>대상</th><th>요일·시간</th><th>장소</th><th style="text-align:right;">수강료</th>${canEdit()?'<th></th>':''}
+      <th>과목</th><th>강좌명</th><th>강사</th><th>대상</th><th style="text-align:center;">횟수</th><th>요일·시간</th><th>장소</th><th style="text-align:right;">수강료</th>${canEdit()?'<th></th>':''}
     </tr></thead><tbody>${rows||`<tr><td colspan="${canEdit()?8:7}" class="empty">${selSemObj?selSemObj.name+'에 강좌가 없습니다.':'강좌가 없습니다.'}</td></tr>`}</tbody></table></div>
     ${!canEdit()?'<p class="muted" style="font-size:12px;margin-top:10px;">강좌 등록·수정·삭제는 관리자만 할 수 있습니다.</p>':''}`;
 }
