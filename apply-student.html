@@ -529,7 +529,7 @@ function renderCourses(){
         <input type="checkbox" ${selected.has(c.id)?'checked':''} ${disabled?'disabled':''} style="pointer-events:none;">
         <div style="flex:1;">
           <div class="ctitle">${c.title} ${tagDone}${tagFull}</div>
-          <div class="cmeta"><span class="tag">${nm('subjects',c.subject_id)}</span>${instNames(c)} · 대상 ${tgt(c.target_id).label||'-'}</div>
+          <div class="cmeta"><span class="tag">${nm('subjects',c.subject_id)}</span>${instNames(c)} · 대상 ${tgt(c.target_id).label||'-'} · 주 ${c.sessions_per_week||(c.sessions||[]).length||'-'}회</div>
           <div class="cmeta">${when}${room?' · '+room:''}${c.tuition?' · '+c.tuition.toLocaleString()+'원':''}</div>
           <div class="cmeta">${seatTxt}</div>
         </div>
