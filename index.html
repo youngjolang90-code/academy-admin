@@ -857,8 +857,20 @@ function showBulkPreview(parsed){
     const problems=[];
     const subject_id=findId('subjects',p.subject,'name');
     if(subject_id===undefined)problems.push(`과목 '${p.subject}' 없음`);
-    const target_id=findId('target_groups',p.target,'label');
-    if(target_id===undefined)problems.push(`대상 '${p.target}' 없음`);
+    // 대상: 이름으로 찾고, 없으면 학년범위로 해석 → 같은 범위 재사용 or 자동생성
+    let target_id=findId('target_groups',p.target,'label');
+    let targetToCreate=null;
+    if(target_id===undefined){
+      const range=parseGradeRange(p.target);
+      if(range){
+        // 같은 학년 범위(공용)의 대상이 이미 있으면 재사용
+        const same=DB.target_groups.find(t=>t.grade_from===range.from&&t.grade_to===range.to&&(t.gender==='공용'||!t.gender));
+        if(same){ target_id=same.id; }
+        else { targetToCreate={label:p.target.trim(),grade_from:range.from,grade_to:range.to,gender:'공용'}; }
+      } else {
+        problems.push(`대상 '${p.target}' 해석 불가 (예: 중1-중3, 초3-초5 형식으로)`);
+      }
+    }
     const instIds=[]; 
     p.instructors.split(',').forEach(nm=>{
       nm=nm.trim(); if(!nm)return;
@@ -869,13 +881,11 @@ function showBulkPreview(parsed){
     errs.forEach(e=>problems.push(`일정 형식 오류: '${e}'`));
     sessions.forEach(s=>{ if(s.room_id===undefined)problems.push(`장소 '${s.room_name}' 없음`); });
     if(!sessions.length)problems.push('수업일정 없음');
-    // 이미 등록됐는지 (같은 학기 + 같은 강좌명)
     const dup=DB.courses.some(c=>c.semester_id===semId && (c.title||'').trim()===p.title.trim());
-    // 상태 판정: dup > problem > ok
     let status='ok';
     if(problems.length) status='problem';
     else if(dup) status='dup';
-    return {p,subject_id,target_id,instIds,sessions,problems,dup,status};
+    return {p,subject_id,target_id,targetToCreate,instIds,sessions,problems,dup,status};
   });
   _bulkRows=results;
   const okRows=results.filter(r=>r.status==='ok');
@@ -888,12 +898,26 @@ function showBulkPreview(parsed){
   const rowHtml=results.map(r=>{
     const bg=r.status==='ok'?'':r.status==='dup'?'#fdf6e6':'#fdecec';
     const sesTxt=r.sessions.map(s=>`${['','월','화','수','목','금','토','일'][s.weekday]} ${s.start_time}~${s.end_time} ${s.room_name}`).join(' / ');
-    const note=r.status==='dup'?'이미 등록된 강좌 (건너뜀)':r.problems.join('<br>');
+    let note='';
+    if(r.status==='dup'){ note='<span style="color:#8a6621;">이미 등록된 강좌 (건너뜀)</span>'; }
+    else if(r.status==='problem'){ note='<span style="color:#a32d2d;">'+r.problems.join('<br>')+'</span>'; }
+    else {
+      // 신규: 대상 자동생성 안내 + 충돌 미리보기
+      const bits=[];
+      if(r.targetToCreate) bits.push(`<span style="color:#1f6b54;">＋대상 '${r.targetToCreate.label}' 자동 생성</span>`);
+      // 이 강좌를 넣었을 때 충돌 검사
+      const chkObj={target_id:r.target_id||-999,sessions:r.sessions};
+      // 자동생성 대상은 아직 id 없으니, 임시로 범위 기반 학년충돌만 볼 수 있게 target_groups에 가상 추가는 생략하고 장소만 정확히 봄
+      const conf=checkCourseConflict(null,{target_id:r.target_id,sessions:r.sessions},semId);
+      if(conf.block) bits.push('<span style="color:#a32d2d;">⛔ '+conf.block.replace(/^⚠[^\n]*\n\n/,'').replace(/\n+/g,' ').replace(/•/g,'').trim()+'</span>');
+      if(conf.warn) bits.push('<span style="color:#8a6621;">⚠️ 학년겹침: '+conf.warn.replace(/•/g,'').replace(/\n/g,', ').trim()+'</span>');
+      note=bits.join('<br>')||'<span style="color:#1f6b54;">이상 없음</span>';
+    }
     return `<tr style="background:${bg};">
       <td style="text-align:center;white-space:nowrap;font-size:11.5px;">${badge(r.status)}</td>
       <td><b>${r.p.title}</b><div class="muted" style="font-size:11px;">${r.p.subject} · ${r.p.target}</div></td>
       <td class="muted" style="font-size:11.5px;">${sesTxt||'-'}</td>
-      <td style="font-size:11.5px;color:${r.status==='dup'?'#8a6621':'#a32d2d'};">${note||''}</td>
+      <td style="font-size:11px;">${note}</td>
     </tr>`;
   }).join('');
   openModal('엑셀 강좌 일괄등록 미리보기',`
@@ -923,8 +947,20 @@ async function runBulkInsert(){
   closeModal();
   let done=0, skipped=[], warned=[];
   for(const r of okRows){
+    // 대상 그룹이 없으면 자동 생성
+    let targetId=r.target_id;
+    if(!targetId && r.targetToCreate){
+      if(LIVE){
+        const tr=await sb.from('target_groups').insert(r.targetToCreate).select();
+        if(tr.error){ skipped.push(`「${r.p.title}」 — 대상 생성 실패: ${tr.error.message}`); continue; }
+        targetId=tr.data[0].id; DB.target_groups.push(tr.data[0]);
+      } else {
+        const nid=Math.max(0,...DB.target_groups.map(t=>t.id))+1;
+        const ng={id:nid,...r.targetToCreate}; DB.target_groups.push(ng); targetId=nid;
+      }
+    }
     const obj={
-      subject_id:r.subject_id, target_id:r.target_id, title:r.p.title,
+      subject_id:r.subject_id, target_id:targetId, title:r.p.title,
       tuition:r.p.tuition?parseInt(String(r.p.tuition).replace(/[^0-9]/g,'')):null,
       capacity:r.p.capacity?parseInt(String(r.p.capacity).replace(/[^0-9]/g,'')):null,
       sessions_per_week:r.sessions.length,
@@ -934,9 +970,7 @@ async function runBulkInsert(){
     if(_bulkSemId)obj.semester_id=_bulkSemId;
     const semId=obj.semester_id||((DB.semesters||[]).find(s=>s.is_active)||(DB.semesters||[])[0]||{}).id;
     const conflict=checkCourseConflict(null,obj,semId);
-    // 장소 충돌 → 건너뜀
     if(conflict.block){ skipped.push(`「${r.p.title}」 — 같은 시간·장소 충돌`); continue; }
-    // 학년 겹침 → 등록은 하되 경고 수집
     if(conflict.warn){ warned.push(`「${r.p.title}」와 겹침:\n${conflict.warn}`); }
     await saveBulkOne(obj);
     done++;
