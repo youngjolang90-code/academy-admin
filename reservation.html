@@ -64,8 +64,8 @@
     font-size:10.5px;line-height:1.25;color:#fff;z-index:3;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.12);}
   .block .b-title{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .block .b-sub{opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:9.5px;}
-  .block.course{background:var(--brand);}
-  .block.resv{background:#5b7fa3;}
+  .block.course{background:#3b82f6;}
+  .block.resv{background:#8b5cf6;}
 
   /* 모달 */
   .overlay{position:fixed;inset:0;background:rgba(20,25,35,.5);display:none;align-items:center;
@@ -113,9 +113,9 @@
 
 <div class="zonetabs" id="zoneTabs"></div>
 <div class="legend">
-  <span><span class="dot" style="background:var(--brand);"></span>수업(강좌)</span>
-  <span><span class="dot" style="background:#5b7fa3;"></span>예약(회식·행사 등)</span>
-  <span style="margin-left:auto;color:var(--brand);">빈 칸을 눌러 예약을 추가하세요</span>
+  <span><span class="dot" style="background:#3b82f6;"></span>플래닛</span>
+  <span><span class="dot" style="background:#8b5cf6;"></span>모임</span>
+  <span style="margin-left:auto;color:var(--brand);">빈 칸을 눌러 모임을 추가하세요</span>
 </div>
 
 <div class="grid-wrap" id="gridWrap"><div class="empty">불러오는 중…</div></div>
@@ -271,14 +271,14 @@ function renderGrid(){
   });
 }
 
-// 빈 칸 클릭 → 예약 추가
+// 빈 칸 클릭 → 모임 추가
 function onSlot(roomId,startM){
   const room=DB.rooms.find(r=>r.id===roomId);
-  openModal('예약 추가',`
+  openModal('모임 추가',`
     <div class="info-row"><span class="lbl">날짜</span><b>${fmtDate(curDate)} (${WDN[curDate.getDay()]})</b></div>
     <div class="info-row"><span class="lbl">장소</span><b>${room?room.name:''}</b></div>
-    <div class="field" style="margin-top:12px;"><label>예약 내용</label>
-      <input id="r_title" placeholder="예: 리더스쿨 하민팀 회식" autofocus></div>
+    <div class="field" style="margin-top:12px;"><label>모임 내용</label>
+      <input id="r_title" placeholder="예: 리더스쿨 하민팀 모임" autofocus></div>
     <div class="row2">
       <div class="field"><label>시작</label><input type="time" id="r_start" value="${m2s(startM)}" step="600"></div>
       <div class="field"><label>종료</label><input type="time" id="r_end" value="${m2s(startM+60)}" step="600"></div>
@@ -286,7 +286,7 @@ function onSlot(roomId,startM){
     <div class="field"><label>메모 (선택)</label><input id="r_memo" placeholder="비고"></div>
     <div class="modal-actions">
       <button class="btn" onclick="closeModal()">취소</button>
-      <button class="btn primary" onclick="saveResv(${roomId})">예약 추가</button>
+      <button class="btn primary" onclick="saveResv(${roomId})">모임 추가</button>
     </div>`);
 }
 async function saveResv(roomId){
@@ -294,20 +294,20 @@ async function saveResv(roomId){
   const st=document.getElementById('r_start').value;
   const et=document.getElementById('r_end').value;
   const memo=(document.getElementById('r_memo').value||'').trim();
-  if(!title){alert('예약 내용을 입력해 주세요.');return;}
+  if(!title){alert('모임 내용을 입력해 주세요.');return;}
   if(!st||!et||hm2m(et)<=hm2m(st)){alert('시간을 올바르게 입력해 주세요.');return;}
   if(!LIVE){alert('데이터베이스에 연결되지 않았습니다.');return;}
   const {error}=await sb.from('reservations').insert({
     room_id:roomId,res_date:ymd(curDate),start_time:st,end_time:et,title,memo:memo||null
   });
-  if(error){alert('예약 저장 오류: '+error.message+'\n\n(reservations 테이블 SQL을 실행했는지 확인해 주세요.)');return;}
+  if(error){alert('모임 저장 오류: '+error.message+'\n\n(reservations 테이블 SQL을 실행했는지 확인해 주세요.)');return;}
   closeModal(); await loadDay();
 }
-// 예약 상세 → 삭제
+// 모임 상세 → 삭제
 function showResv(id){
   const rv=DB.reservations.find(r=>r.id===id); if(!rv)return;
   const room=DB.rooms.find(r=>r.id===rv.room_id);
-  openModal('예약 상세',`
+  openModal('모임 상세',`
     <div class="info-row"><span class="lbl">내용</span><b>${rv.title}</b></div>
     <div class="info-row"><span class="lbl">장소</span>${room?room.name:''}</div>
     <div class="info-row"><span class="lbl">시간</span>${fmtT(rv.start_time)} ~ ${fmtT(rv.end_time)}</div>
@@ -318,7 +318,7 @@ function showResv(id){
     </div>`);
 }
 async function delResv(id){
-  if(!confirm('이 예약을 삭제할까요?'))return;
+  if(!confirm('이 모임을 삭제할까요?'))return;
   const {error}=await sb.from('reservations').delete().eq('id',id);
   if(error){alert('삭제 오류: '+error.message);return;}
   closeModal(); await loadDay();
@@ -329,12 +329,12 @@ function showCourse(id){
   const sess=DB.sessions.filter(s=>s.course_id===id);
   const room=id=>{ const r=DB.rooms.find(x=>x.id===id); return r?r.name:''; };
   const sList=sess.map(s=>`${['','월','화','수','목','금','토','일'][s.weekday]} ${s.start_time.slice(0,5)}~${s.end_time.slice(0,5)} · ${room(s.room_id)}`).join('<br>');
-  openModal('수업 정보',`
+  openModal('플래닛 일정',`
     <div class="info-row"><span class="lbl">강좌</span><b>${c.title}</b></div>
     <div class="info-row"><span class="lbl">강사</span>${instName(c.id)||'-'}</div>
     <div class="info-row"><span class="lbl">일정</span><div>${sList}</div></div>
     <div class="modal-actions"><button class="btn" onclick="closeModal()">닫기</button></div>
-    <p style="font-size:12px;color:var(--ink-soft);margin:10px 0 0;">수업은 강좌 관리에서 자동으로 표시됩니다.</p>`);
+    <p style="font-size:12px;color:var(--ink-soft);margin:10px 0 0;">플래닛 강좌는 강좌 관리에서 자동으로 표시됩니다.</p>`);
 }
 
 function openModal(title,html){
