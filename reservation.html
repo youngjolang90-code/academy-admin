@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>플래닛 아카데미 · 공간 예약</title>
+<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<meta name="theme-color" content="#363636">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --ink:#1a1d24;--ink-soft:#6b7280;--line:#e8eaed;--line-soft:#f1f3f5;
+    --paper:#f7f8fa;--card:#fff;--brand:#b5893a;--brand-soft:#f7f0e3;--brand-deep:#363636;
+    --shadow:0 1px 3px rgba(20,25,35,.06);--radius:12px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--paper);color:var(--ink);
+    font-family:'Pretendard',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    font-size:14px;line-height:1.5;-webkit-text-size-adjust:100%;}
+
+  /* 상단바 */
+  .topbar{background:var(--brand-deep);color:#fff;padding:12px 16px;position:sticky;top:0;z-index:50;
+    display:flex;align-items:center;gap:12px;}
+  .topbar .logo{width:30px;height:30px;border-radius:8px;}
+  .topbar h1{font-size:16px;font-weight:700;margin:0;}
+  .topbar .sub{font-size:11px;color:#b5893a;margin-top:1px;}
+
+  /* 날짜 이동 */
+  .datebar{display:flex;align-items:center;justify-content:center;gap:14px;padding:12px;
+    background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:54px;z-index:40;}
+  .datebar button{border:1px solid var(--line);background:var(--card);border-radius:8px;
+    width:34px;height:34px;font-size:16px;cursor:pointer;color:var(--ink);}
+  .datebar button:hover{background:var(--brand-soft);}
+  .datebar .cur{font-size:15px;font-weight:700;min-width:150px;text-align:center;}
+  .datebar .cur .dow{color:var(--brand);margin-left:5px;}
+  .datebar input[type=date]{position:absolute;opacity:0;width:0;height:0;}
+  .today-btn{border:1px solid var(--brand)!important;color:var(--brand)!important;font-size:12px!important;
+    width:auto!important;padding:0 10px;font-weight:600;}
+
+  /* 건물 탭 */
+  .zonetabs{display:flex;gap:6px;padding:10px 12px;overflow-x:auto;background:var(--paper);
+    position:sticky;top:calc(54px + 59px);z-index:35;-webkit-overflow-scrolling:touch;}
+  .zonetab{border:1px solid var(--line);background:var(--card);border-radius:20px;padding:7px 15px;
+    font-size:13px;white-space:nowrap;cursor:pointer;color:var(--ink-soft);font-weight:500;}
+  .zonetab.on{background:var(--brand-deep);color:#fff;border-color:var(--brand-deep);}
+
+  /* 격자 */
+  .grid-wrap{overflow:auto;-webkit-overflow-scrolling:touch;padding:0 0 40px;}
+  table.grid{border-collapse:collapse;width:max-content;min-width:100%;}
+  .grid th,.grid td{border:1px solid var(--line);}
+  .grid thead th{background:var(--brand-deep);color:#fff;font-size:12px;font-weight:600;
+    padding:10px 6px;position:sticky;top:0;z-index:10;min-width:96px;line-height:1.35;}
+  .grid thead th.time-col{min-width:52px;width:52px;left:0;z-index:20;}
+  .grid td.time-cell{background:var(--card);color:var(--ink-soft);font-size:11px;text-align:center;
+    font-variant-numeric:tabular-nums;position:sticky;left:0;z-index:5;white-space:nowrap;padding:0 6px;
+    font-weight:600;height:30px;}
+  .grid td.slot{height:30px;min-width:96px;padding:0;position:relative;cursor:pointer;background:var(--card);}
+  .grid td.slot:hover{background:var(--brand-soft);}
+  .grid td.slot.half{border-top:1px dashed var(--line-soft);}
+
+  /* 예약/강좌 블록 */
+  .block{position:absolute;left:2px;right:2px;border-radius:6px;padding:3px 5px;overflow:hidden;
+    font-size:10.5px;line-height:1.25;color:#fff;z-index:3;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.12);}
+  .block .b-title{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .block .b-sub{opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:9.5px;}
+  .block.course{background:var(--brand);}
+  .block.resv{background:#5b7fa3;}
+
+  /* 모달 */
+  .overlay{position:fixed;inset:0;background:rgba(20,25,35,.5);display:none;align-items:center;
+    justify-content:center;z-index:100;padding:16px;}
+  .overlay.show{display:flex;}
+  .modal{background:#fff;border-radius:14px;padding:22px;width:100%;max-width:400px;
+    box-shadow:0 10px 40px rgba(0,0,0,.25);max-height:90vh;overflow:auto;}
+  .modal h3{margin:0 0 16px;font-size:17px;display:flex;justify-content:space-between;align-items:center;}
+  .modal h3 .x{border:none;background:none;font-size:22px;cursor:pointer;color:var(--ink-soft);}
+  .field{margin-bottom:13px;}
+  .field label{display:block;font-size:12px;font-weight:600;color:var(--ink-soft);margin-bottom:5px;}
+  .field input,.field select,.field textarea{width:100%;padding:9px 11px;border:1px solid var(--line);
+    border-radius:8px;font-size:14px;font-family:inherit;}
+  .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--brand);}
+  .row2{display:flex;gap:10px;}
+  .row2 .field{flex:1;}
+  .btn{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;padding:10px 16px;
+    font-size:14px;cursor:pointer;font-weight:500;}
+  .btn.primary{background:var(--brand);color:#fff;border-color:var(--brand);}
+  .btn.danger{background:#fff;color:#a32d2d;border-color:#e6bcbc;}
+  .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:18px;}
+  .info-row{display:flex;gap:8px;font-size:13.5px;padding:5px 0;}
+  .info-row .lbl{color:var(--ink-soft);min-width:54px;}
+
+  .empty{text-align:center;color:var(--ink-soft);padding:50px 20px;font-size:14px;}
+  .legend{display:flex;gap:16px;padding:10px 14px;font-size:12px;color:var(--ink-soft);flex-wrap:wrap;}
+  .legend .dot{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px;}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <img src="icons/icon-192.png" class="logo" onerror="this.style.display='none'">
+  <div><h1>공간 예약</h1><div class="sub">FLANET ACADEMY</div></div>
+</div>
+
+<div class="datebar">
+  <button onclick="moveDate(-1)">‹</button>
+  <div class="cur" onclick="document.getElementById('datePick').showPicker&&document.getElementById('datePick').showPicker()">
+    <span id="curDate">-</span><span class="dow" id="curDow"></span>
+    <input type="date" id="datePick" onchange="pickDate(this.value)">
+  </div>
+  <button onclick="moveDate(1)">›</button>
+  <button class="today-btn" onclick="goToday()">오늘</button>
+</div>
+
+<div class="zonetabs" id="zoneTabs"></div>
+<div class="legend">
+  <span><span class="dot" style="background:var(--brand);"></span>수업(강좌)</span>
+  <span><span class="dot" style="background:#5b7fa3;"></span>예약(회식·행사 등)</span>
+  <span style="margin-left:auto;color:var(--brand);">빈 칸을 눌러 예약을 추가하세요</span>
+</div>
+
+<div class="grid-wrap" id="gridWrap"><div class="empty">불러오는 중…</div></div>
+
+<div class="overlay" id="overlay"><div class="modal" id="modal"></div></div>
+
+<script>
+// ── Supabase 연결 ──
+const SUPABASE_URL="https://eohwddjxoyccxmcrdsvp.supabase.co";
+const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVvaHdkZGp4b3ljY3htY3Jkc3ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI2NDIxODEsImV4cCI6MjA5ODIxODE4MX0.iAzj7u7I10qmCgvK9eqcDi6kW8BdM8NX4ZO_QN2qLmc";
+let sb=null, LIVE=false;
+try{ if(SUPABASE_URL.startsWith("http")){ sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY); LIVE=true; } }catch(e){}
+
+// ── 상태 ──
+let curDate=new Date();
+let DB={rooms:[],courses:[],sessions:[],reservations:[]};
+let curZone=0;
+const WDN=['일','월','화','수','목','금','토'];   // JS getDay() 기준
+const WD_SYS=[7,1,2,3,4,5,6];                       // 우리 시스템: 월=1..일=7
+
+// 건물/구역 그룹 — rooms.zone 컬럼이 있으면 그걸로, 없으면 이름 앞부분으로 자동 그룹
+function buildZones(){
+  const groups={}; const order={};
+  DB.rooms.forEach(r=>{
+    // zone 컬럼 우선, 없으면 이름 앞부분("N층" 또는 첫 단어)
+    let key=r.zone;
+    if(!key){ const m=(r.name||'').match(/^(\d+층|[^\s]+)/); key=m?m[1]:'기타'; }
+    (groups[key]=groups[key]||[]).push(r);
+    if(order[key]===undefined) order[key]=r.sort_order||999;
+    else order[key]=Math.min(order[key], r.sort_order||999);
+  });
+  // 각 그룹 내 장소도 sort_order로 정렬
+  Object.values(groups).forEach(rooms=>rooms.sort((a,b)=>(a.sort_order||999)-(b.sort_order||999)||a.id-b.id));
+  // 그룹을 sort_order로 정렬
+  const zones=Object.entries(groups)
+    .sort((a,b)=>order[a[0]]-order[b[0]])
+    .map(([label,rooms])=>({label,rooms}));
+  return [{label:'전체',rooms:DB.rooms.slice().sort((a,b)=>(a.sort_order||999)-(b.sort_order||999)||a.id-b.id)}, ...zones];
+}
+let ZONES=[];
+
+// 시간 눈금 (9:00~23:00, 30분)
+const T_START=9*60, T_END=23*60, STEP=30;
+const m2s=m=>`${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
+const hm2m=t=>{const[a,b]=t.split(':');return +a*60+ +b;};
+const fmtT=t=>{let[h,m]=t.split(':');h=+h;const ap=h<12?'오전':'오후';let hh=h%12||12;return `${ap} ${hh}:${m}`;};
+
+function fmtDate(d){return `${d.getMonth()+1}.${d.getDate()}`;}
+function ymd(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+
+function renderDateBar(){
+  document.getElementById('curDate').textContent=fmtDate(curDate);
+  document.getElementById('curDow').textContent=`(${WDN[curDate.getDay()]})`;
+  document.getElementById('datePick').value=ymd(curDate);
+}
+function moveDate(delta){curDate.setDate(curDate.getDate()+delta);renderDateBar();loadDay();}
+function pickDate(v){if(v){curDate=new Date(v+'T00:00:00');renderDateBar();loadDay();}}
+function goToday(){curDate=new Date();renderDateBar();loadDay();}
+
+async function loadAll(){
+  if(!LIVE){document.getElementById('gridWrap').innerHTML='<div class="empty">데이터베이스에 연결할 수 없습니다.</div>';return;}
+  const [rm,co,cs]=await Promise.all([
+    sb.from('rooms').select('*').order('sort_order').order('id'),
+    sb.from('courses').select('*'),
+    sb.from('course_sessions').select('*'),
+  ]);
+  DB.rooms=rm.data||[]; DB.courses=co.data||[]; DB.sessions=cs.data||[];
+  // 강사 연결
+  try{ const ci=await sb.from('course_instructors').select('*'); DB.courseInst=ci.data||[]; }catch(e){DB.courseInst=[];}
+  try{ const ins=await sb.from('instructors').select('*'); DB.instructors=ins.data||[]; }catch(e){DB.instructors=[];}
+  ZONES=buildZones();
+  renderZoneTabs();
+  await loadDay();
+}
+async function loadDay(){
+  if(!LIVE)return;
+  const res=await sb.from('reservations').select('*').eq('res_date',ymd(curDate));
+  DB.reservations=res.data||[];
+  renderGrid();
+}
+
+function renderZoneTabs(){
+  document.getElementById('zoneTabs').innerHTML=ZONES.map((z,i)=>
+    `<button class="zonetab ${i===curZone?'on':''}" onclick="setZone(${i})">${z.label}</button>`).join('');
+}
+function setZone(i){curZone=i;renderZoneTabs();renderGrid();}
+
+function instName(courseId){
+  const link=(DB.courseInst||[]).filter(l=>l.course_id===courseId);
+  const names=link.map(l=>(DB.instructors.find(i=>i.id===l.instructor_id)||{}).name).filter(Boolean);
+  return names.join(', ');
+}
+
+function renderGrid(){
+  const rooms=(ZONES[curZone]||{}).rooms||[];
+  if(!rooms.length){document.getElementById('gridWrap').innerHTML='<div class="empty">표시할 공간이 없습니다.</div>';return;}
+  const sysWd=WD_SYS[curDate.getDay()]; // 오늘 요일(시스템 코드)
+
+  // 시간 행
+  const times=[];
+  for(let m=T_START;m<T_END;m+=STEP) times.push(m);
+
+  // 헤더
+  let html='<table class="grid"><thead><tr><th class="time-col">시간</th>';
+  rooms.forEach(r=>{ html+=`<th>${(r.name||'').replace(/\s+/,'<br>')}</th>`; });
+  html+='</tr></thead><tbody>';
+
+  // 각 시간행
+  times.forEach(m=>{
+    html+=`<tr><td class="time-cell">${m%60===0?m2s(m):''}</td>`;
+    rooms.forEach(r=>{
+      html+=`<td class="slot ${m%60!==0?'half':''}" data-room="${r.id}" data-min="${m}" onclick="onSlot(${r.id},${m})"></td>`;
+    });
+    html+='</tr>';
+  });
+  html+='</tbody></table>';
+  const wrap=document.getElementById('gridWrap');
+  wrap.innerHTML=html;
+
+  // 블록 배치 (강좌 + 예약)
+  const rowH=30; // px per 30min
+  const place=(roomId,startM,endM,cls,title,sub,data)=>{
+    const rIdx=rooms.findIndex(r=>r.id===roomId); if(rIdx<0)return;
+    if(endM<=T_START||startM>=T_END)return;
+    const s=Math.max(startM,T_START), e=Math.min(endM,T_END);
+    const top=(s-T_START)/STEP*rowH;
+    const h=Math.max(rowH*0.8,(e-s)/STEP*rowH);
+    // 해당 첫 슬롯 td를 기준으로 배치
+    const td=wrap.querySelector(`td.slot[data-room="${roomId}"][data-min="${Math.floor(s/STEP)*STEP}"]`)
+      || wrap.querySelector(`td.slot[data-room="${roomId}"]`);
+    if(!td)return;
+    const b=document.createElement('div');
+    b.className='block '+cls;
+    b.style.top='0px'; b.style.height=(h-3)+'px';
+    // 정확한 위치: 첫 슬롯이 s가 아닐 수 있으니 offset
+    const slotStart=Math.floor(s/STEP)*STEP;
+    b.style.top=((s-slotStart)/STEP*rowH)+'px';
+    b.innerHTML=`<div class="b-title">${title}</div>${sub?`<div class="b-sub">${sub}</div>`:''}`;
+    b.onclick=(ev)=>{ev.stopPropagation();data.type==='resv'?showResv(data.id):showCourse(data.id);};
+    td.appendChild(b);
+  };
+
+  // 강좌
+  DB.sessions.filter(s=>s.weekday===sysWd).forEach(s=>{
+    const c=DB.courses.find(x=>x.id===s.course_id); if(!c)return;
+    place(s.room_id,hm2m(s.start_time),hm2m(s.end_time),'course',
+      c.title, instName(c.id), {type:'course',id:c.id});
+  });
+  // 예약
+  DB.reservations.forEach(rv=>{
+    place(rv.room_id,hm2m(rv.start_time),hm2m(rv.end_time),'resv',
+      rv.title, '', {type:'resv',id:rv.id});
+  });
+}
+
+// 빈 칸 클릭 → 예약 추가
+function onSlot(roomId,startM){
+  const room=DB.rooms.find(r=>r.id===roomId);
+  openModal('예약 추가',`
+    <div class="info-row"><span class="lbl">날짜</span><b>${fmtDate(curDate)} (${WDN[curDate.getDay()]})</b></div>
+    <div class="info-row"><span class="lbl">장소</span><b>${room?room.name:''}</b></div>
+    <div class="field" style="margin-top:12px;"><label>예약 내용</label>
+      <input id="r_title" placeholder="예: 리더스쿨 하민팀 회식" autofocus></div>
+    <div class="row2">
+      <div class="field"><label>시작</label><input type="time" id="r_start" value="${m2s(startM)}" step="600"></div>
+      <div class="field"><label>종료</label><input type="time" id="r_end" value="${m2s(startM+60)}" step="600"></div>
+    </div>
+    <div class="field"><label>메모 (선택)</label><input id="r_memo" placeholder="비고"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">취소</button>
+      <button class="btn primary" onclick="saveResv(${roomId})">예약 추가</button>
+    </div>`);
+}
+async function saveResv(roomId){
+  const title=(document.getElementById('r_title').value||'').trim();
+  const st=document.getElementById('r_start').value;
+  const et=document.getElementById('r_end').value;
+  const memo=(document.getElementById('r_memo').value||'').trim();
+  if(!title){alert('예약 내용을 입력해 주세요.');return;}
+  if(!st||!et||hm2m(et)<=hm2m(st)){alert('시간을 올바르게 입력해 주세요.');return;}
+  if(!LIVE){alert('데이터베이스에 연결되지 않았습니다.');return;}
+  const {error}=await sb.from('reservations').insert({
+    room_id:roomId,res_date:ymd(curDate),start_time:st,end_time:et,title,memo:memo||null
+  });
+  if(error){alert('예약 저장 오류: '+error.message+'\n\n(reservations 테이블 SQL을 실행했는지 확인해 주세요.)');return;}
+  closeModal(); await loadDay();
+}
+// 예약 상세 → 삭제
+function showResv(id){
+  const rv=DB.reservations.find(r=>r.id===id); if(!rv)return;
+  const room=DB.rooms.find(r=>r.id===rv.room_id);
+  openModal('예약 상세',`
+    <div class="info-row"><span class="lbl">내용</span><b>${rv.title}</b></div>
+    <div class="info-row"><span class="lbl">장소</span>${room?room.name:''}</div>
+    <div class="info-row"><span class="lbl">시간</span>${fmtT(rv.start_time)} ~ ${fmtT(rv.end_time)}</div>
+    ${rv.memo?`<div class="info-row"><span class="lbl">메모</span>${rv.memo}</div>`:''}
+    <div class="modal-actions">
+      <button class="btn danger" onclick="delResv(${id})">삭제</button>
+      <button class="btn" onclick="closeModal()">닫기</button>
+    </div>`);
+}
+async function delResv(id){
+  if(!confirm('이 예약을 삭제할까요?'))return;
+  const {error}=await sb.from('reservations').delete().eq('id',id);
+  if(error){alert('삭제 오류: '+error.message);return;}
+  closeModal(); await loadDay();
+}
+// 강좌 상세 (읽기 전용)
+function showCourse(id){
+  const c=DB.courses.find(x=>x.id===id); if(!c)return;
+  const sess=DB.sessions.filter(s=>s.course_id===id);
+  const room=id=>{ const r=DB.rooms.find(x=>x.id===id); return r?r.name:''; };
+  const sList=sess.map(s=>`${['','월','화','수','목','금','토','일'][s.weekday]} ${s.start_time.slice(0,5)}~${s.end_time.slice(0,5)} · ${room(s.room_id)}`).join('<br>');
+  openModal('수업 정보',`
+    <div class="info-row"><span class="lbl">강좌</span><b>${c.title}</b></div>
+    <div class="info-row"><span class="lbl">강사</span>${instName(c.id)||'-'}</div>
+    <div class="info-row"><span class="lbl">일정</span><div>${sList}</div></div>
+    <div class="modal-actions"><button class="btn" onclick="closeModal()">닫기</button></div>
+    <p style="font-size:12px;color:var(--ink-soft);margin:10px 0 0;">수업은 강좌 관리에서 자동으로 표시됩니다.</p>`);
+}
+
+function openModal(title,html){
+  document.getElementById('modal').innerHTML=`<h3>${title}<button class="x" onclick="closeModal()">×</button></h3>${html}`;
+  document.getElementById('overlay').classList.add('show');
+}
+function closeModal(){document.getElementById('overlay').classList.remove('show');}
+document.getElementById('overlay').onclick=e=>{if(e.target.id==='overlay')closeModal();};
+
+// 시작
+renderDateBar();
+loadAll();
+</script>
+</body>
+</html>
