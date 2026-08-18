@@ -79,6 +79,9 @@
   .muted{color:var(--ink-soft);}
   .row-actions{display:flex;gap:4px;justify-content:flex-end;}
   /* timetable */
+  .ttmode{display:inline-flex;gap:0;margin-bottom:12px;border:1px solid var(--brand);border-radius:8px;overflow:hidden;}
+  .ttmodebtn{border:none;background:var(--card);color:var(--brand);padding:7px 16px;cursor:pointer;font-size:13px;font-weight:600;}
+  .ttmodebtn.on{background:var(--brand);color:#fff;}
   .ttfilter{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;}
   .ttchip{border:1px solid var(--line);background:var(--card);color:var(--ink-soft);
     padding:6px 12px;border-radius:20px;cursor:pointer;font-size:12.5px;font-weight:500;}
@@ -337,7 +340,8 @@ function connBanner(){
 }
 
 // ── 시간표 ──
-let ttFilter=null; // null=전체, 숫자=특정 강사 id
+let ttFilter=null; // null=전체, 숫자=특정 강사 id 또는 대상 id
+let ttMode='inst'; // 'inst'=강사 기준, 'target'=학년(대상) 기준
 // ════════ 통합검색 ════════
 // 현재 진행 중인 세션인지 판정 (요일+시각 대조)
 function nowTeaching(c){
@@ -377,7 +381,7 @@ function renderDashboard(){
       <div style="font-size:26px;font-weight:700;color:${color};margin-top:2px;font-variant-numeric:tabular-nums;">${val}</div></div>`;
     const todayList=todayCourses.length
       ? todayCourses.map(c=>{
-          const ses=(c.sessions||[]).filter(s=>s.weekday===wd).map(s=>`${hhmm(s.start_time)}~${hhmm(s.end_time)} · ${name('rooms',s.room_id)}`).join('<br>');
+          const ses=(c.sessions||[]).filter(s=>s.weekday===wd).map(s=>`${hhmm(s.start_time)}~${hhmm(s.end_time)} · ${s.room_id?name('rooms',s.room_id):'미정'}`).join('<br>');
           const cnt=DB.enrollments.filter(e=>e.course_id===c.id&&e.status==='ENROLLED').length;
           return `<tr><td><b>${c.title}</b></td><td class="muted">${ses}</td><td style="text-align:right;">${cnt}명</td></tr>`;
         }).join('')
@@ -661,7 +665,12 @@ function studentTimetable(sid){
 function gradeText(g){return g===0?'7세':g<=6?('초'+g):g<=9?('중'+(g-6)):g<=12?('고'+(g-9)):'성인';}
 
 function renderTimetable(){
-  const flat=conflicts().filter(f=> ttFilter==null ? true : hasInst(f.course,ttFilter));
+  // 모드에 따라 필터: 강사 기준 or 학년(대상) 기준
+  const flat=conflicts().filter(f=>{
+    if(ttFilter==null) return true;
+    if(ttMode==='inst') return hasInst(f.course,ttFilter);
+    return f.course.target_id===ttFilter;
+  });
   let rows='';
   for(let h=9;h<=22;h++){
     rows+=`<tr><td class="tcol muted">${String(h).padStart(2,'0')}:00</td>`;
@@ -671,21 +680,40 @@ function renderTimetable(){
         const cls=f.room&&f.grade?'both':f.room?'room':f.grade?'warn':'ok';
         return `<div class="cls ${cls}" onclick="explain(${f.course.id})">
           <b>${name('subjects',f.course.subject_id)}</b><br>${instNames(f.course)}<br>
-          ${hhmm(f.start_time)}~${hhmm(f.end_time)}<br>${name('rooms',f.room_id)}</div>`;
+          ${hhmm(f.start_time)}~${hhmm(f.end_time)}<br>${f.room_id?name('rooms',f.room_id):'미정'}</div>`;
       }).join('')+'</td>';
     }
     rows+='</tr>';
   }
-  // 강사 필터 버튼들 — 강좌가 있는 강사만 표시 (자동 반영)
-  const activeInstIds=[...new Set([].concat(...DB.courses.map(c=>(c.instructor_ids&&c.instructor_ids.length)?c.instructor_ids:(c.instructor_id?[c.instructor_id]:[]))))];
-  const activeInsts=DB.instructors.filter(i=>activeInstIds.includes(i.id));
-  const chips=`<button class="ttchip ${ttFilter==null?'on':''}" onclick="ttFilter=null;renderTimetable()">전체</button>`+
-    activeInsts.map(i=>`<button class="ttchip ${ttFilter===i.id?'on':''}" onclick="ttFilter=${i.id};renderTimetable()">${i.name}</button>`).join('');
+  // 모드 전환 버튼
+  const modeBtns=`<div class="ttmode">
+    <button class="ttmodebtn ${ttMode==='inst'?'on':''}" onclick="ttMode='inst';ttFilter=null;renderTimetable()">강사별</button>
+    <button class="ttmodebtn ${ttMode==='target'?'on':''}" onclick="ttMode='target';ttFilter=null;renderTimetable()">학년별</button>
+  </div>`;
+  // 필터 칩 — 모드에 따라 강사 목록 또는 대상(학년) 목록
+  let chips='';
+  if(ttMode==='inst'){
+    const activeInstIds=[...new Set([].concat(...DB.courses.map(c=>(c.instructor_ids&&c.instructor_ids.length)?c.instructor_ids:(c.instructor_id?[c.instructor_id]:[]))))];
+    const activeInsts=DB.instructors.filter(i=>activeInstIds.includes(i.id));
+    chips=`<button class="ttchip ${ttFilter==null?'on':''}" onclick="ttFilter=null;renderTimetable()">전체</button>`+
+      activeInsts.map(i=>`<button class="ttchip ${ttFilter===i.id?'on':''}" onclick="ttFilter=${i.id};renderTimetable()">${i.name}</button>`).join('');
+  } else {
+    // 강좌가 있는 대상(학년)만, 학년 낮은 순 정렬
+    const activeTgtIds=[...new Set(DB.courses.map(c=>c.target_id).filter(Boolean))];
+    const activeTgts=DB.target_groups.filter(t=>activeTgtIds.includes(t.id))
+      .sort((a,b)=>(a.grade_from||0)-(b.grade_from||0));
+    chips=`<button class="ttchip ${ttFilter==null?'on':''}" onclick="ttFilter=null;renderTimetable()">전체</button>`+
+      activeTgts.map(t=>`<button class="ttchip ${ttFilter===t.id?'on':''}" onclick="ttFilter=${t.id};renderTimetable()">${t.label}</button>`).join('');
+  }
   const sems=DB.semesters||[];
   const actSem=sems.find(s=>s.is_active)||sems[0];
-  const who = ttFilter==null ? '전체 강사' : ((DB.instructors.find(i=>i.id===ttFilter)||{}).name||'')+' 강사';
+  let who;
+  if(ttFilter==null) who = ttMode==='inst'?'전체 강사':'전체 학년';
+  else if(ttMode==='inst') who = ((DB.instructors.find(i=>i.id===ttFilter)||{}).name||'')+' 강사';
+  else who = (DB.target_groups.find(t=>t.id===ttFilter)||{}).label||'';
   main.innerHTML=head('주간 시간표',(actSem?`${actSem.name} · `:'')+'강좌 칸을 누르면 충돌 상세를 볼 수 있어요. · 현재 보기: '+who,
     `<button class="btn sm" id="ttImgBtn" onclick="exportTimetableImg(+document.getElementById('ttScale').value)">이미지 저장</button> <select id="ttScale" class="btn sm" style="padding:5px 8px;"><option value="2">2배(선명)</option><option value="1">1배(기본)</option><option value="3">3배(고화질)</option></select>`)+connBanner()+`
+    ${modeBtns}
     <div class="ttfilter">${chips}</div>
     <div class="legend">
       <span><i class="sw" style="background:#fff"></i>정상</span>
@@ -1033,7 +1061,7 @@ function renderCourses(){
     const sess=(c.sessions||[]);
     const sList=sess.map(x=>`${WD[x.weekday]} ${hhmm(x.start_time)}~${hhmm(x.end_time)}`);
     const s=sList.length?sList.join('<br>'):'-';
-    const roomList=sess.map(x=>x.room_id?name('rooms',x.room_id):'-');
+    const roomList=sess.map(x=>x.room_id?name('rooms',x.room_id):'<span style="color:#b08">미정</span>');
     const room=roomList.length?roomList.join('<br>'):'-';
     return `<tr class="course-row" onclick="courseDetail(${c.id})" style="cursor:pointer;">
       <td><span class="tag">${name('subjects',c.subject_id)}</span></td>
