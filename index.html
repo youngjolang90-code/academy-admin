@@ -1051,10 +1051,13 @@ function renderCourses(){
     const act=sems.find(s=>s.is_active); selSem=act?act.id:(sems[0]?sems[0].id:null);
   }
   const semCourses=DB.courses.filter(c=>c.semester_id===selSem).slice().sort((a,b)=>{
-    // 1순위: 과목명 ㄱㄴ순
-    const sa=name('subjects',a.subject_id)||'', sb2=name('subjects',b.subject_id)||'';
+    // 1순위: 과목명 ㄱㄴ순 (과목명이 같으면 확실히 인접)
+    const subA=DB.subjects.find(s=>s.id===a.subject_id), subB=DB.subjects.find(s=>s.id===b.subject_id);
+    const sa=(subA&&subA.name)||'힣', sb2=(subB&&subB.name)||'힣'; // 과목 없으면 맨 뒤로
     const cmp=sa.localeCompare(sb2,'ko');
     if(cmp!==0) return cmp;
+    // 과목명이 같은 경우 subject_id로 한 번 더 묶음 (동명 방지)
+    if((a.subject_id||0)!==(b.subject_id||0)) return (a.subject_id||0)-(b.subject_id||0);
     // 2순위: 학년(대상 시작 학년) 낮은 순
     const ta=DB.target_groups.find(t=>t.id===a.target_id)||{};
     const tb=DB.target_groups.find(t=>t.id===b.target_id)||{};
@@ -2074,8 +2077,17 @@ function editStudentAcct(id){
 async function deleteStudentAcct(id,nm2){
   if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
   if(!confirm(`'${nm2}' 학생을 삭제할까요?\n이 학생의 수강신청 내역도 함께 삭제됩니다.`))return;
-  const r=await sb.rpc('admin_delete_student',{p_id:id});
-  if(r.error){alert('삭제 오류: '+r.error.message);return;}
+  if(!LIVE){
+    DB.enrollments=(DB.enrollments||[]).filter(e=>e.student_id!==id);
+    DB.students=(DB.students||[]).filter(s=>s.id!==id);
+    alert('삭제되었습니다.'); searchStudentAcct(); return;
+  }
+  // 1) 수강신청 내역 먼저 삭제
+  const e1=await sb.from('enrollments').delete().eq('student_id',id);
+  if(e1.error){alert('수강신청 삭제 오류: '+e1.error.message);return;}
+  // 2) 학생 삭제
+  const e2=await sb.from('students').delete().eq('id',id);
+  if(e2.error){alert('학생 삭제 오류: '+e2.error.message+'\n\n(권한 문제일 수 있습니다. RLS 정책을 확인해 주세요.)');return;}
   await loadAll(); alert('삭제되었습니다.'); searchStudentAcct();
 }
 async function resetAdminPw(id,nm2){
@@ -2660,7 +2672,10 @@ async function exportTimetableImg(scale){
     document.body.appendChild(el);
     const canvas=await html2canvas(el,{scale:scale||2,backgroundColor:'#ffffff'});
     document.body.removeChild(el);
-    const who = ttFilter==null ? '전체' : ((DB.instructors.find(i=>i.id===ttFilter)||{}).name||'');
+    let who;
+    if(ttFilter==null) who='전체';
+    else if(ttMode==='inst') who=((DB.instructors.find(i=>i.id===ttFilter)||{}).name||'전체');
+    else { const GL={0:'7세',1:'초1',2:'초2',3:'초3',4:'초4',5:'초5',6:'초6',7:'중1',8:'중2',9:'중3',10:'고1',11:'고2',12:'고3',13:'성인'}; who=GL[ttFilter]||'전체'; }
     const today=new Date().toISOString().slice(0,10);
     const a=document.createElement('a');
     a.download=`플래닛아카데미_시간표_${who}_${today}.png`;
