@@ -1050,7 +1050,16 @@ function renderCourses(){
   if(selSem===null){
     const act=sems.find(s=>s.is_active); selSem=act?act.id:(sems[0]?sems[0].id:null);
   }
-  const semCourses=DB.courses.filter(c=>c.semester_id===selSem);
+  const semCourses=DB.courses.filter(c=>c.semester_id===selSem).slice().sort((a,b)=>{
+    // 1순위: 과목명 ㄱㄴ순
+    const sa=name('subjects',a.subject_id)||'', sb2=name('subjects',b.subject_id)||'';
+    const cmp=sa.localeCompare(sb2,'ko');
+    if(cmp!==0) return cmp;
+    // 2순위: 학년(대상 시작 학년) 낮은 순
+    const ta=DB.target_groups.find(t=>t.id===a.target_id)||{};
+    const tb=DB.target_groups.find(t=>t.id===b.target_id)||{};
+    return (ta.grade_from??99)-(tb.grade_from??99);
+  });
   const selSemObj=sems.find(s=>s.id===selSem);
 
   // 학기 선택 칩
@@ -2662,7 +2671,12 @@ async function exportTimetableImg(scale){
 }
 // 저장 전용: 화면과 같은 1시간=1칸 표 구조 + 과목별 색·제목·범례 (출력/공유용)
 function buildPrettyTimetable(){
-  const flat=conflicts().filter(f=> ttFilter==null ? true : hasInst(f.course,ttFilter));
+  const flat=conflicts().filter(f=>{
+    if(ttFilter==null) return true;
+    if(ttMode==='inst') return hasInst(f.course,ttFilter);
+    const t=DB.target_groups.find(x=>x.id===f.course.target_id);
+    return t && t.grade_from<=ttFilter && ttFilter<=t.grade_to;
+  });
   // 과목별 파스텔 색상
   const palette=[
     ['#e8f0fe','#1a56b0'],['#e6f4ea','#1e7e45'],['#fce8e6','#b3261e'],
@@ -2680,7 +2694,10 @@ function buildPrettyTimetable(){
   const maxH=flat.length?Math.max(...endHrs):22;
 
   const WDN=['','월','화','수','목','금','토','일'];
-  const who = ttFilter==null ? '전체 강사' : ((DB.instructors.find(i=>i.id===ttFilter)||{}).name||'')+' 강사';
+  let who;
+  if(ttFilter==null) who = ttMode==='inst'?'전체 강사':'전체 학년';
+  else if(ttMode==='inst') who = ((DB.instructors.find(i=>i.id===ttFilter)||{}).name||'')+' 강사';
+  else { const GL={0:'7세',1:'초1',2:'초2',3:'초3',4:'초4',5:'초5',6:'초6',7:'중1',8:'중2',9:'중3',10:'고1',11:'고2',12:'고3',13:'성인'}; who=(GL[ttFilter]||'')+' 포함 강좌'; }
   const today=new Date();
   const dateStr=`${today.getFullYear()}. ${today.getMonth()+1}. ${today.getDate()}`;
 
