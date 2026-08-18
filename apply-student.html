@@ -397,7 +397,7 @@ function renderDashboard(){
     return `<div class="db-cls ${live?'on':''}">
       <div style="flex:1;">
         <div style="font-weight:600;">${nm('subjects',t.en.course.subject_id)} · ${t.en.course.title}</div>
-        <div class="cmeta">${hhmm(t.s.start_time)}~${hhmm(t.s.end_time)} · ${nm('rooms',t.s.room_id)} · ${instNames(t.en.course)}</div>
+        <div class="cmeta">${hhmm(t.s.start_time)}~${hhmm(t.s.end_time)} · ${instNames(t.en.course)}</div>
       </div>${badge}</div>`;
   }).join('') : '<div class="muted" style="padding:6px 2px;">오늘 예정된 수업이 없습니다. 🎉</div>';
 
@@ -484,7 +484,7 @@ function buildMyTimetable(mine){
       if(hit){
         const span=Math.max(1,Math.round((hit.end-hit.start)/60));
         html+=`<td rowspan="${span}" style="border:1px solid #cfe3d8;background:#e6f2ec;color:#1f5b45;padding:3px;vertical-align:top;font-size:10px;line-height:1.3;">
-          <b>${hit.label.length>10?hit.label.slice(0,10)+'…':hit.label}</b><br>${hit.st}~${hit.et}<br>${hit.room||''}</td>`;
+          <b>${hit.label.length>10?hit.label.slice(0,10)+'…':hit.label}</b><br>${hit.st}~${hit.et}</td>`;
       } else {
         const covered=items.some(i=>i.wd===d && i.start<h*60 && i.end>h*60);
         if(!covered)html+='<td style="border:1px solid #eef;height:26px;"></td>';
@@ -521,6 +521,14 @@ function renderCourses(){
     const isMine=mine.includes(c.id);
     const clash=isMine?null:clashReason(c);
     const when=(c.sessions||[]).map(x=>`${WD[x.weekday]} ${hhmm(x.start_time)}~${hhmm(x.end_time)}`).join(' / ')||'-';
+    // 주간 횟수 x 1회 수업시간(분)
+    const perWeek=c.sessions_per_week||(c.sessions||[]).length||0;
+    const durMin=(t1,t2)=>{const m=t=>{const[h,mn]=(t||'0:0').split(':');return +h*60+ +mn;};return Math.max(0,m(t2)-m(t1));};
+    const durs=[...new Set((c.sessions||[]).map(x=>durMin(x.start_time,x.end_time)).filter(d=>d>0))];
+    let durTxt='';
+    if(durs.length===1) durTxt=` x ${durs[0]}분`;
+    else if(durs.length>1) durTxt=` x ${Math.min(...durs)}~${Math.max(...durs)}분`;
+    const freqTxt=perWeek?`주 ${perWeek}회${durTxt}`:'';
     const room=(c.sessions||[])[0]?nm('rooms',c.sessions[0].room_id):'';
     const seatTxt=s.cap==null?'<span class="seat ok">모집중</span>'
       :s.full?'<span class="seat full">정원 마감 · 대기 신청</span>'
@@ -535,8 +543,8 @@ function renderCourses(){
         <input type="checkbox" ${selected.has(c.id)?'checked':''} ${disabled?'disabled':''} style="pointer-events:none;">
         <div style="flex:1;">
           <div class="ctitle">${c.title} ${tagDone}${tagFull}</div>
-          <div class="cmeta"><span class="tag">${nm('subjects',c.subject_id)}</span>${instNames(c)} · 대상 ${tgt(c.target_id).label||'-'} · 주 ${c.sessions_per_week||(c.sessions||[]).length||'-'}회</div>
-          <div class="cmeta">${when}${room?' · '+room:''}${c.tuition?' · '+c.tuition.toLocaleString()+'원':''}</div>
+          <div class="cmeta"><span class="tag">${nm('subjects',c.subject_id)}</span>${instNames(c)} · 대상 ${tgt(c.target_id).label||'-'}${freqTxt?' · '+freqTxt:''}</div>
+          <div class="cmeta">${when}${c.tuition?' · '+c.tuition.toLocaleString()+'원':''}</div>
           <div class="cmeta">${seatTxt}</div>
         </div>
       </label>
