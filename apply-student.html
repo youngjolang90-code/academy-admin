@@ -173,7 +173,7 @@ async function hashPw(pw){
 
 async function loadAll(){
   if(!LIVE)return;
-  for(const tb of ['subjects','instructors','rooms','target_groups','courses','enrollments']){
+  for(const tb of ['subjects','instructors','rooms','target_groups','courses','enrollments','semesters']){
     const{data,error}=await sb.from(tb).select('*'); if(!error&&data)DB[tb]=data;
   }
   // 공지·설정 (없어도 무시)
@@ -504,7 +504,13 @@ function renderCourses(){
      ['7','중1'],['8','중2'],['9','중3'],['10','고1'],['11','고2'],['12','고3'],['13','성인']]
     .map(([v,l])=>`<option value="${v}" ${ageFilt===v?'selected':''}>${l}</option>`).join('');
 
+  // 활성 학기 id (없으면 전체 허용)
+  const actSem=(DB.semesters||[]).find(s=>s.is_active);
+  const actSemId=actSem?actSem.id:null;
+
   let list=DB.courses.filter(c=>{
+    // 활성 학기 강좌만 (학기가 지정된 경우). 활성 학기가 없으면 전체 표시
+    if(actSemId!=null && c.semester_id!=null && c.semester_id!==actSemId) return false;
     if(catFilt!=='0' && String(c.subject_id)!==String(catFilt)) return false;
     if(ageFilt!=='all'){ const t=tgt(c.target_id); const g=+ageFilt; if(!(t.grade_from<=g && g<=t.grade_to)) return false; }
     return true;
