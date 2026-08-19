@@ -2092,8 +2092,10 @@ function editStudentAcct(id){
           parent_phone:val('es_phone')||null, school:val('es_school')||null,
           student_phone:val('es_sphone')||null
         }).eq('id',id);
-        if(error){alert('수정 오류: '+error.message+'\n\n수정 권한(RLS)이 없을 수 있습니다.\n"학생삭제_강제허용.sql"에 update 정책을 추가해 주세요.');return;}
-        await loadAll();
+        if(error){alert('수정 오류: '+error.message+'\n\n수정 권한(RLS)이 없을 수 있습니다.\n"학생삭제_강제허용.sql"을 실행해 주세요.');return;}
+        // 수정 성공 → 화면 데이터도 직접 갱신 (RPC 재조회에 의존하지 않음)
+        const st=DB.students.find(x=>x.id===id);
+        if(st){st.name=val('es_name');st.grade=+val('es_grade');st.parent_phone=val('es_phone')||null;st.school=val('es_school')||null;st.student_phone=val('es_sphone')||null;}
       } else {
         const st=DB.students.find(x=>x.id===id);
         if(st){st.name=val('es_name');st.grade=+val('es_grade');st.parent_phone=val('es_phone')||null;st.school=val('es_school')||null;st.student_phone=val('es_sphone')||null;}
