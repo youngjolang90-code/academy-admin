@@ -1397,6 +1397,7 @@ function renderStudents(){
       <td>${badge}</td>
       <td onclick="event.stopPropagation()"><div class="row-actions">
         <button class="btn sm" onclick="studentForm(${s.id})">수정</button>
+        <button class="btn sm" onclick="resetStudentPw(${s.id},'${(s.name||'').replace(/'/g,'')}')">비번 초기화</button>
         <button class="btn sm ghost" onclick="del('students',${s.id})">삭제</button>
       </div></td></tr>`;
   }).join('');
@@ -1657,6 +1658,20 @@ async function payOneInDetail(enrollId,sid){
   }
   renderStudents();
   studentDetail(sid); // 모달 갱신
+}
+async function resetStudentPw(id,nm){
+  if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
+  if(!confirm(`'${nm}' 학생의 비밀번호를 1234로 초기화할까요?`))return;
+  try{
+    const ph=await hashPw('1234');
+    if(LIVE){
+      const{error}=await sb.from('students').update({password_hash:ph}).eq('id',id);
+      if(error){alert('초기화 오류: '+error.message+'\n\n수정 권한(RLS)이 없을 수 있습니다.\n"학생_수정삭제_권한.sql"을 실행해 주세요.');return;}
+    } else {
+      const st=DB.students.find(x=>x.id===id); if(st)st.password_hash=ph;
+    }
+    alert(`✅ 초기화 완료\n\n'${nm}' 학생의 임시 비밀번호: 1234\n로그인 후 변경하도록 안내해 주세요.`);
+  }catch(err){ alert('초기화 중 오류: '+(err&&err.message?err.message:err)); }
 }
 function studentForm(id){
   if(!canEdit()){alert('읽기 전용 계정은 편집할 수 없습니다.');return;}
