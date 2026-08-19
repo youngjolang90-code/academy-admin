@@ -2092,7 +2092,7 @@ function editStudentAcct(id){
           parent_phone:val('es_phone')||null, school:val('es_school')||null,
           student_phone:val('es_sphone')||null
         }).eq('id',id);
-        if(error){alert('수정 오류: '+error.message+'\n\n수정 권한(RLS)이 없을 수 있습니다.\n"학생삭제_권한.sql"에 update 정책을 추가해 주세요.');return;}
+        if(error){alert('수정 오류: '+error.message+'\n\n수정 권한(RLS)이 없을 수 있습니다.\n"학생삭제_강제허용.sql"에 update 정책을 추가해 주세요.');return;}
         await loadAll();
       } else {
         const st=DB.students.find(x=>x.id===id);
@@ -2486,8 +2486,9 @@ async function del(table,id){
       const e1=await sb.from('enrollments').delete().eq('student_id',id);
       if(e1.error){alert('수강신청 삭제 오류: '+e1.error.message);return;}
       const{error}=await sb.from('students').delete().eq('id',id);
-      if(error){alert('학생 삭제 오류: '+error.message+'\n\n삭제 권한(RLS)이 없을 수 있습니다.\n"학생삭제_권한.sql"을 실행해 주세요.');return;}
-      await loadAll();
+      if(error){alert('학생 삭제 오류: '+error.message+'\n\n삭제 권한(RLS)이 없을 수 있습니다.\n"학생삭제_강제허용.sql"을 실행해 주세요.');return;}
+      DB.students=(DB.students||[]).filter(x=>x.id!==id);
+      DB.enrollments=(DB.enrollments||[]).filter(e=>e.student_id!==id);
     } else {
       DB.enrollments=(DB.enrollments||[]).filter(e=>e.student_id!==id);
       DB.students=DB.students.filter(x=>x.id!==id);
