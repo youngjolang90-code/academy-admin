@@ -2384,6 +2384,17 @@ async function save(table,id,obj){
         ? await sb.from(table).update(payload).eq('id',id).select()
         : await sb.from(table).insert(payload).select();
       if(res.error){alert('저장 오류: '+res.error.message);return;}
+      // 화면 데이터 직접 갱신 (RLS로 SELECT가 막혀 loadAll이 반영 못 하는 경우 대비)
+      if(id){
+        const row=(DB[table]||[]).find(x=>x.id===id);
+        if(row) Object.assign(row,obj);
+      } else {
+        // 새로 추가: 반환 데이터가 있으면 그걸, 없으면(SELECT 막힘) 입력값으로 목록에 추가
+        const newRow = (res.data && res.data[0]) ? res.data[0] : {...obj, id:Date.now()};
+        (DB[table]=DB[table]||[]).push(newRow);
+      }
+      // courses 외 테이블은 위에서 직접 갱신했으므로 전체 재조회 생략
+      render(); return;
     }
     await loadAll();
   } else {
