@@ -1675,7 +1675,8 @@ async function resetStudentPw(id){
   try{
     const ph=await hashPw('1234');
     if(LIVE){
-      const{error}=await sb.from('students').update({password_hash:ph}).eq('id',id);
+      const r=await sb.rpc('admin_reset_student_pw',{p_id:id,p_hash:ph});
+      const error=r.error;
       if(error){alert('초기화 오류: '+error.message+'\n\n수정 권한(RLS)이 없을 수 있습니다.\n"학생_수정삭제_권한.sql"을 실행해 주세요.');return;}
     } else {
       if(st)st.password_hash=ph;
@@ -2100,7 +2101,7 @@ function editStudentAcct(id){
           parent_phone:val('es_phone')||null, school:val('es_school')||null,
           student_phone:val('es_sphone')||null
         }).eq('id',id);
-        if(error){alert('수정 오류: '+error.message+'\n\n수정 권한(RLS)이 없을 수 있습니다.\n"학생삭제_강제허용.sql"을 실행해 주세요.');return;}
+        if(error){alert('수정 오류: '+error.message+'\n\n수정 권한(RLS)이 없을 수 있습니다.\n"학생관리_RPC_최종.sql"을 실행해 주세요.');return;}
         // 수정 성공 → 화면 데이터도 직접 갱신 (RPC 재조회에 의존하지 않음)
         const st=DB.students.find(x=>x.id===id);
         if(st){st.name=val('es_name');st.grade=+val('es_grade');st.parent_phone=val('es_phone')||null;st.school=val('es_school')||null;st.student_phone=val('es_sphone')||null;}
@@ -2378,6 +2379,21 @@ async function save(table,id,obj){
         const r3=await sb.from('course_instructors').insert(links);
         if(r3.error)alert('강사 연결 오류: '+r3.error.message);
       }
+    } else if(table==='students'){
+      // 학생: 연락처 보호를 위해 조회가 막혀 있어 전용 함수(RPC)로 처리
+      if(id){
+        const r=await sb.rpc('admin_update_student',{
+          p_id:id, p_name:obj.name??null, p_grade:(obj.grade!=null?+obj.grade:null),
+          p_phone:obj.parent_phone??null, p_school:obj.school??null, p_sphone:obj.student_phone??null});
+        if(r.error){alert('수정 오류: '+r.error.message+'\n\n"학생관리_RPC_최종.sql"을 실행했는지 확인해 주세요.');return;}
+        const row=(DB.students||[]).find(x=>x.id===id);
+        if(row) Object.assign(row,obj);
+      } else {
+        const r=await sb.from('students').insert({...obj});
+        if(r.error){alert('저장 오류: '+r.error.message);return;}
+        await loadAll();   // 새 학생은 정확한 id를 받기 위해 목록 다시 불러오기
+      }
+      render(); return;
     } else {
       let payload={...obj};
       let res = id
@@ -2504,10 +2520,9 @@ async function del(table,id){
       : '이 학생을 삭제할까요?';
     if(!confirm(msg))return;
     if(LIVE){
-      const e1=await sb.from('enrollments').delete().eq('student_id',id);
-      if(e1.error){alert('수강신청 삭제 오류: '+e1.error.message);return;}
-      const{error}=await sb.from('students').delete().eq('id',id);
-      if(error){alert('학생 삭제 오류: '+error.message+'\n\n삭제 권한(RLS)이 없을 수 있습니다.\n"학생삭제_강제허용.sql"을 실행해 주세요.');return;}
+      const r=await sb.rpc('admin_delete_student',{p_id:id});
+      const error=r.error;
+      if(error){alert('학생 삭제 오류: '+error.message+'\n\n삭제 권한(RLS)이 없을 수 있습니다.\n"학생관리_RPC_최종.sql"을 실행해 주세요.');return;}
       DB.students=(DB.students||[]).filter(x=>x.id!==id);
       DB.enrollments=(DB.enrollments||[]).filter(e=>e.student_id!==id);
     } else {
