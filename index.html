@@ -2355,6 +2355,7 @@ async function save(table,id,obj){
   }
 }
 async function del(table,id){
+  try{
   if(!canEdit()){alert('읽기 전용 계정은 삭제할 수 없습니다.');return;}
   // 강좌 삭제 시엔 연결된 신청·세션·강사연결을 먼저 정리
   if(table==='courses'){
@@ -2470,6 +2471,7 @@ async function del(table,id){
   if(LIVE){const{error}=await sb.from(table).delete().eq('id',id);if(error){alert(error.message);return;}await loadAll();}
   else{DB[table]=DB[table].filter(x=>x.id!==id);}
   render();
+  }catch(err){ alert('삭제 처리 중 오류: '+(err&&err.message?err.message:err)); console.error('del 오류:',err); }
 }
 
 // ════════ Supabase 데이터 로드 ════════
