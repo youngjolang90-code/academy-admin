@@ -1381,38 +1381,46 @@ async function resolveIdByName(arr,raw){
 
 // ── 학생·수강신청 ──
 // ═══ 학생 관리: 검색 → 정보 확인·수정·삭제 ═══
+function studentRowHtml(s){
+  const cnt=DB.enrollments.filter(e=>e.student_id===s.id).length;
+  const badge=cnt>0
+    ? `<span class="tag" style="background:var(--brand-soft);color:var(--brand);">${cnt}개</span>`
+    : '<span class="muted">없음</span>';
+  return `<tr style="cursor:pointer;" onclick="studentDetail(${s.id})">
+    <td><b>${s.name}</b></td>
+    <td class="muted">${s.grade!=null?gradeText(s.grade):'-'}</td>
+    <td class="muted">${s.parent_phone||'-'}</td>
+    <td class="muted">${s.login_id||'-'}</td>
+    <td>${badge}</td>
+    <td onclick="event.stopPropagation()"><div class="row-actions">
+      <button class="btn sm" onclick="studentForm(${s.id})">수정</button>
+      <button class="btn sm" onclick="resetStudentPw(${s.id})">비번 초기화</button>
+      <button class="btn sm ghost" onclick="del('students',${s.id})">삭제</button>
+    </div></td></tr>`;
+}
+// 검색 입력 시 목록(tbody)만 갱신 — 화면 전체를 다시 그리지 않아 한글 입력이 안 깨짐
+function updateStudentRows(){
+  const q=(stuQuery||'').trim();
+  const filtered=q?DB.students.filter(s=>(s.name||'').includes(q)):DB.students;
+  const tb=document.getElementById('stuTableBody');
+  if(tb) tb.innerHTML=filtered.map(studentRowHtml).join('')||`<tr><td colspan="6" class="empty">${q?'검색 결과가 없습니다.':'학생이 없습니다.'}</td></tr>`;
+}
 function renderStudents(){
   const q=(stuQuery||'').trim();
   const filtered=q?DB.students.filter(s=>(s.name||'').includes(q)):DB.students;
-  const rows=filtered.map(s=>{
-    const cnt=DB.enrollments.filter(e=>e.student_id===s.id).length;
-    const badge=cnt>0
-      ? `<span class="tag" style="background:var(--brand-soft);color:var(--brand);">${cnt}개</span>`
-      : '<span class="muted">없음</span>';
-    return `<tr style="cursor:pointer;" onclick="studentDetail(${s.id})">
-      <td><b>${s.name}</b></td>
-      <td class="muted">${s.grade!=null?gradeText(s.grade):'-'}</td>
-      <td class="muted">${s.parent_phone||'-'}</td>
-      <td class="muted">${s.login_id||'-'}</td>
-      <td>${badge}</td>
-      <td onclick="event.stopPropagation()"><div class="row-actions">
-        <button class="btn sm" onclick="studentForm(${s.id})">수정</button>
-        <button class="btn sm" onclick="resetStudentPw(${s.id})">비번 초기화</button>
-        <button class="btn sm ghost" onclick="del('students',${s.id})">삭제</button>
-      </div></td></tr>`;
-  }).join('');
+  const rows=filtered.map(studentRowHtml).join('');
 
   main.innerHTML=head('학생 관리',`총 ${DB.students.length}명`,
     `<button class="btn sm" onclick="exportExcel('students')" style="margin-right:6px;">학생 엑셀</button><button class="btn sm" onclick="exportExcel('roster')" style="margin-right:6px;">전체 수강생 명단</button><button class="btn primary" onclick="studentForm()">+ 학생 추가</button>`)+connBanner()+`
     <div style="display:flex;gap:8px;margin-bottom:12px;">
       <input id="stuListSearch" placeholder="학생 이름 검색" value="${q.replace(/"/g,'&quot;')}"
-        oninput="stuQuery=this.value;renderStudents();document.getElementById('stuListSearch').focus();"
+        oninput="stuQuery=this.value;updateStudentRows();"
         style="flex:1;max-width:280px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;">
       ${q?`<button class="btn sm ghost" onclick="stuQuery='';renderStudents()">전체 보기</button>`:''}
     </div>
     <div class="card"><table><thead><tr>
       <th>이름</th><th>학년</th><th>학부모 연락처</th><th>아이디</th><th>수강</th><th></th>
-    </tr></thead><tbody>${rows||`<tr><td colspan="6" class="empty">${q?'검색 결과가 없습니다.':'학생이 없습니다.'}</td></tr>`}</tbody></table></div>
+    </tr></thead><tbody id="stuTableBody">${rows||`<tr><td colspan="6" class="empty">${q?'검색 결과가 없습니다.':'학생이 없습니다.'}</td></tr>`}</tbody></table></div>
     <p class="muted" style="font-size:12px;margin-top:10px;">학생을 누르면 상세 정보와 신청 강좌를 볼 수 있어요.</p>`;
 }
 
