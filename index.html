@@ -712,17 +712,26 @@ function studentTimetable(sid){
     grid='<table style="width:100%;border-collapse:collapse;font-size:11.5px;min-width:520px;"><thead><tr><th style="width:42px;padding:5px;background:#f4f6f9;border:1px solid #e4e9ef;"></th>';
     days.forEach(d=>grid+=`<th style="padding:6px 3px;background:#2e3a4d;color:#fff;border:1px solid #2e3a4d;font-weight:700;">${DN[d]}</th>`);
     grid+='</tr></thead><tbody>';
+    // 칸 점유표 (요일 열이 밀리지 않게 정확히 계산)
+    const cell={};
+    items.slice().sort((a,b)=>a.start-b.start).forEach(it=>{
+      const sRow=Math.floor(it.start/60);
+      const eRow=Math.max(sRow+1, Math.ceil(it.end/60));
+      for(let h=sRow;h<eRow;h++){ if(cell[it.wd+'_'+h]) return; }
+      cell[it.wd+'_'+sRow]={type:'start',it,span:eRow-sRow};
+      for(let h=sRow+1;h<eRow;h++) cell[it.wd+'_'+h]={type:'cont'};
+    });
     for(let h=minH;h<maxH;h++){
       grid+=`<tr><td style="text-align:center;color:#889;border:1px solid #eef;font-size:10.5px;background:#fafbfc;">${String(h).padStart(2,'0')}시</td>`;
       days.forEach(d=>{
-        const hit=items.find(i=>i.wd===d && Math.floor(i.start/60)===h);
-        if(hit){
-          const span=Math.max(1,Math.round((hit.end-hit.start)/60));
-          grid+=`<td rowspan="${span}" style="border:1px solid #cfe3d8;background:${hit.wait?'#fff4e0':'#e6f2ec'};color:#1f5b45;padding:4px;vertical-align:top;font-size:10.5px;line-height:1.35;">
+        const c=cell[d+'_'+h];
+        if(c&&c.type==='cont')return;
+        if(c&&c.type==='start'){
+          const hit=c.it;
+          grid+=`<td rowspan="${c.span}" style="border:1px solid #cfe3d8;background:${hit.wait?'#fff4e0':'#e6f2ec'};color:#1f5b45;padding:4px;vertical-align:top;font-size:10.5px;line-height:1.35;">
             <b>${hit.title.length>11?hit.title.slice(0,11)+'…':hit.title}</b>${hit.wait?' <span style="color:#a1560a;">[대기]</span>':''}<br>${hit.st}~${hit.et}<br>${hit.room||''}</td>`;
         } else {
-          const covered=items.some(i=>i.wd===d && i.start<h*60 && i.end>h*60);
-          if(!covered) grid+='<td style="border:1px solid #eef;height:30px;"></td>';
+          grid+='<td style="border:1px solid #eef;height:30px;"></td>';
         }
       });
       grid+='</tr>';
