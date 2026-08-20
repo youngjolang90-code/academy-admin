@@ -106,6 +106,26 @@
   .db-cancel{border:1px solid var(--line);background:#fff;color:#a32d2d;border-radius:7px;
     padding:6px 11px;font-size:12px;cursor:pointer;white-space:nowrap;}
   .db-cancel:hover{background:#fdf0f0;border-color:#e0b4b4;}
+
+  /* ── 반응형: 화면이 좁아지면 글자·여백이 알아서 작아짐 (가로 스크롤 대신) ── */
+  html{-webkit-text-size-adjust:100%;}
+  body{font-size:clamp(11.5px,2.4vw,15px);word-break:keep-all;overflow-wrap:normal;}
+  img{max-width:100%;height:auto;}
+
+  /* 한 줄 유지 (2줄·세로쓰기 방지) */
+  .btn,.tag,.curri-btn,.logout,.db-live,th,td{white-space:nowrap;}
+  h1,h2,h3{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .cmeta,.selinfo{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .course-main b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;}
+
+  /* 폭에 맞춰 글자 축소 */
+  .cmeta{font-size:clamp(9.5px,2vw,13px);}
+  table{width:100%;min-width:0;table-layout:auto;}
+  th,td{font-size:clamp(9px,1.9vw,13px);padding:clamp(4px,1vw,10px) clamp(3px,0.8vw,8px);}
+  .card{overflow-x:auto;}
+  .btn{font-size:clamp(12px,2.3vw,15px);padding:clamp(9px,1.6vw,13px) clamp(10px,2vw,18px);}
+  .tag{font-size:clamp(8.5px,1.7vw,11px);}
+  h1{font-size:clamp(15px,3.4vw,21px);}
 </style>
 </head>
 <body>
@@ -300,12 +320,51 @@ async function doLogin(){
       alert('아이디 또는 비밀번호가 올바르지 않습니다.');return;
     }
     const s=res.data[0];
-    me={id:s.id,name:s.name,grade:s.grade};
+    me={id:s.id,name:s.name,grade:s.grade,pwHash:ph,mustChangePw:(pw==='1234')};
     logStuLogin(s.id,lid,s.name,true); // 성공 기록
     await loadAll();
+    saveStuSession();
+    selected=new Set();
+    // 임시 비밀번호(1234)로 로그인한 경우 → 비밀번호 변경 화면으로 (새로고침해도 유지)
+    if(me.mustChangePw){ renderChangePw(true); return; }
+    renderDashboard(); return;
   } else { me={id:1,name:'미리보기',grade:2}; }
   saveStuSession();
   selected=new Set(); renderDashboard();
+}
+// ── 비밀번호 변경 화면 (forced=true 이면 임시비번 사용자에게 강제) ──
+function renderChangePw(forced){
+  app.innerHTML=`
+    <div class="top">
+      <h1>비밀번호 변경</h1>
+      <p>${forced?'임시 비밀번호로 로그인했습니다. 새 비밀번호를 설정해 주세요.':'새 비밀번호를 입력해 주세요.'}</p>
+    </div>
+    <div class="card">
+      <div class="field"><label>새 비밀번호</label>
+        <input id="cp_new" type="password" placeholder="4자 이상" autocomplete="new-password"></div>
+      <div class="field"><label>새 비밀번호 확인</label>
+        <input id="cp_new2" type="password" placeholder="다시 입력" autocomplete="new-password"></div>
+      <button class="btn" onclick="doChangePw(${forced?'true':'false'})">변경하기</button>
+      ${forced
+        ? `<button class="btn sec" style="margin-top:8px;" onclick="logout()">나중에 하기 (로그아웃)</button>`
+        : `<button class="btn sec" style="margin-top:8px;" onclick="renderDashboard()">취소</button>`}
+    </div>`;
+}
+async function doChangePw(forced){
+  const p1=document.getElementById('cp_new').value;
+  const p2=document.getElementById('cp_new2').value;
+  if(!p1||p1.length<4){alert('비밀번호는 4자 이상 입력해 주세요.');return;}
+  if(p1!==p2){alert('두 비밀번호가 일치하지 않습니다.');return;}
+  if(p1==='1234'){alert('임시 비밀번호와 다른 비밀번호로 설정해 주세요.');return;}
+  if(!LIVE){alert('미리보기 모드에서는 변경되지 않습니다.');renderDashboard();return;}
+  if(!me.pwHash){alert('보안을 위해 다시 로그인한 뒤 변경해 주세요.');logout();return;}
+  const newHash=await hashPw(p1);
+  const r=await sb.rpc('student_change_pw',{p_id:me.id,p_old_hash:me.pwHash,p_new_hash:newHash});
+  if(r.error){alert('변경 오류: '+r.error.message);return;}
+  if(r.data!==true){alert('현재 비밀번호 확인에 실패했습니다.\n다시 로그인 후 시도해 주세요.');return;}
+  me.pwHash=newHash; me.mustChangePw=false; saveStuSession();
+  alert('✅ 비밀번호가 변경되었습니다.');
+  renderDashboard();
 }
 // 학생 로그인 이력 기록
 async function logStuLogin(userId,loginId,userName,success){
@@ -444,7 +503,7 @@ function renderDashboard(){
   app.innerHTML=`
     <div class="userbar">
       <div class="who">${me.name} <small>${gradeLabel(me.grade)}</small></div>
-      <button class="logout" onclick="logout()">로그아웃</button>
+      <button class="logout" onclick="renderChangePw(false)" style="margin-right:8px;">비밀번호 변경</button><button class="logout" onclick="logout()">로그아웃</button>
     </div>
     <div class="top" style="text-align:left;margin-bottom:16px;">
       <h1 style="font-size:18px;">${me.name} 님, 안녕하세요 👋</h1>
@@ -557,7 +616,7 @@ function renderCourses(){
   app.innerHTML=`
     <div class="userbar">
       <div class="who">${me.name} <small>${gradeLabel(me.grade)}</small></div>
-      <button class="logout" onclick="logout()">로그아웃</button>
+      <button class="logout" onclick="renderChangePw(false)" style="margin-right:8px;">비밀번호 변경</button><button class="logout" onclick="logout()">로그아웃</button>
     </div>
     <div class="top"><h1>강좌 선택</h1><p>여러 강좌를 함께 선택할 수 있어요 · 시간이 겹치는 강좌는 자동으로 막혀요</p></div>
     <button class="btn sec" style="margin-bottom:14px;" onclick="renderDashboard()">← 대시보드로</button>
@@ -643,7 +702,8 @@ function renderDone(results){
   let saved=null;
   try{ saved=JSON.parse(localStorage.getItem('flanet_student')||'null'); }catch(e){}
   if(saved && saved.me && saved.expire && Date.now() < saved.expire){
-    me=saved.me; touchStuSession(); renderDashboard();
+    me=saved.me; touchStuSession();
+    if(me.mustChangePw){ renderChangePw(true); } else { renderDashboard(); }
   } else {
     try{ localStorage.removeItem('flanet_student'); }catch(e){}
     renderLogin();
