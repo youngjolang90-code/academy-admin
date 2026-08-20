@@ -181,6 +181,28 @@
     th,td{padding:9px 8px;font-size:12.5px;}
     .ttchip{padding:6px 11px;font-size:12px;}
   }
+
+  /* ── 반응형: 화면이 좁아지면 글자·여백이 알아서 작아짐 (가로 스크롤 대신) ── */
+  html{-webkit-text-size-adjust:100%;}
+  body{font-size:clamp(11px,2.1vw,15px);word-break:keep-all;overflow-wrap:normal;}
+  img{max-width:100%;height:auto;}
+
+  /* 한 줄 유지 (2줄·세로쓰기 방지) */
+  .btn,.tag,.ttchip,.ttmodebtn,.navbtn span,th,td{white-space:nowrap;}
+  h1,h2,h3{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .statcard>div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+  /* 표: 폭에 맞춰 글자·여백 축소 */
+  table{width:100%;min-width:0;table-layout:auto;}
+  th,td{font-size:clamp(9px,1.55vw,13px);padding:clamp(5px,0.9vw,12px) clamp(4px,0.7vw,12px);}
+  .card{overflow-x:auto;}   /* 그래도 넘칠 때만 최소한의 대비 */
+
+  /* 버튼·태그도 함께 축소 */
+  .btn{font-size:clamp(10px,1.6vw,14px);padding:clamp(6px,0.9vw,11px) clamp(8px,1.4vw,18px);}
+  .btn.sm{font-size:clamp(9px,1.4vw,12px);padding:clamp(4px,0.7vw,6px) clamp(6px,1.1vw,10px);}
+  .tag{font-size:clamp(8.5px,1.3vw,11px);}
+  .muted{font-size:clamp(9.5px,1.5vw,13px);}
+  h1{font-size:clamp(14px,2.6vw,20px);}
 </style>
 </head>
 <body>
