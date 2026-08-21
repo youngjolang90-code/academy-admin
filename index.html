@@ -459,37 +459,59 @@ function renderDashboard(){
 
   if(teacher){
     // ── 강사 전용 대시보드 ──
-    const myStudents=new Set(scopedEnr.map(e=>e.student_id)).size;
+    // 오늘의 수업: 학기와 무관하게 "오늘 요일"에 수업이 있는 내 강좌 전부
+    const myAllCourses=DB.courses.filter(c=>hasInst(c,myInst));
+    const tToday=myAllCourses.filter(c=>(c.sessions||[]).some(s=>s.weekday===wd));
+    // 내 담당 강좌: 활성 학기(활성 학기가 없으면 전체) 기준
+    const actId=(sems.find(x=>x.is_active)||{}).id ?? null;
+    const tMine=actId!=null ? myAllCourses.filter(c=>c.semester_id===actId) : myAllCourses;
+    const tMineIds=new Set(tMine.map(c=>c.id));
+    const myStudents=new Set(DB.enrollments.filter(e=>tMineIds.has(e.course_id)).map(e=>e.student_id)).size;
+    const actSemName=(sems.find(x=>x.is_active)||{}).name||'';
     const stat=(label,val,color)=>`<div class="statcard" style="padding:16px 18px;flex:1;min-width:130px;border-left:3px solid ${color};">
       <div class="muted" style="font-size:12px;">${label}</div>
       <div style="font-size:26px;font-weight:700;color:${color};margin-top:2px;font-variant-numeric:tabular-nums;">${val}</div></div>`;
-    const todayList=todayCourses.length
-      ? todayCourses.map(c=>{
+    const cntBtn=cid=>{
+      const n=DB.enrollments.filter(e=>e.course_id===cid&&e.status==='ENROLLED').length;
+      return `<button class="btn sm ghost" style="color:var(--brand);font-weight:600;" title="신청 학생 명단 보기" onclick="event.stopPropagation();teacherCourseStudents(${cid})">${n}명 ›</button>`;
+    };
+    const todayList=tToday.length
+      ? tToday.map(c=>{
           const ses=(c.sessions||[]).filter(s=>s.weekday===wd).map(s=>`${hhmm(s.start_time)}~${hhmm(s.end_time)} · ${s.room_id?name('rooms',s.room_id):'미정'}`).join('<br>');
-          const cnt=DB.enrollments.filter(e=>e.course_id===c.id&&e.status==='ENROLLED').length;
-          return `<tr style="cursor:pointer;" onclick="teacherCourseStudents(${c.id})"><td><b>${c.title}</b></td><td class="muted">${ses}</td><td style="text-align:right;">${cnt}명</td></tr>`;
+          const semTag=(c.semester_id!=null&&actId!=null&&c.semester_id!==actId)
+            ? ` <span class="tag" style="background:var(--line-soft);color:var(--ink-soft);">${(sems.find(x=>x.id===c.semester_id)||{}).name||'다른 학기'}</span>` : '';
+          return `<tr style="cursor:pointer;" onclick="teacherCourseStudents(${c.id})"><td><b>${c.title}</b>${semTag}</td><td class="muted">${ses}</td><td style="text-align:right;">${cntBtn(c.id)}</td></tr>`;
         }).join('')
       : '<tr><td colspan="3" class="empty">오늘 예정된 수업이 없습니다.</td></tr>';
-    // 내 강좌별 등록 인원
-    const courseList=myCourses.map(c=>{
-      const cnt=DB.enrollments.filter(e=>e.course_id===c.id&&e.status==='ENROLLED').length;
-      const when=(c.sessions||[]).map(s=>`${WDN[s.weekday]} ${hhmm(s.start_time)}~${hhmm(s.end_time)}`).join(', ');
-      return `<tr style="cursor:pointer;" onclick="teacherCourseStudents(${c.id})"><td><b>${c.title}</b></td><td class="muted" style="font-size:12px;">${when}</td><td style="text-align:right;">${cnt}명</td></tr>`;
-    }).join('')||'<tr><td colspan="3" class="empty">담당 강좌가 없습니다.</td></tr>';
+    // 내 강좌: 활성 학기 기준 + 신청 학생 바로 확인
+    const courseList=tMine.map(c=>{
+      const when=(c.sessions||[]).map(s=>`${WDN[s.weekday]} ${hhmm(s.start_time)}~${hhmm(s.end_time)}${s.room_id?' · '+name('rooms',s.room_id):''}`).join('<br>');
+      const names=DB.enrollments.filter(e=>e.course_id===c.id&&e.status==='ENROLLED')
+        .map(e=>((DB.students||[]).find(x=>x.id===e.student_id)||{}).name).filter(Boolean);
+      const nameLine=names.length
+        ? `<div class="muted" style="font-size:11.5px;margin-top:3px;">${names.slice(0,8).join(', ')}${names.length>8?` 외 ${names.length-8}명`:''}</div>`
+        : `<div class="muted" style="font-size:11.5px;margin-top:3px;">신청 학생 없음</div>`;
+      return `<tr style="cursor:pointer;" onclick="teacherCourseStudents(${c.id})">
+        <td><b>${c.title}</b>${nameLine}</td>
+        <td class="muted" style="font-size:12px;">${when}</td>
+        <td style="text-align:right;">${cntBtn(c.id)}</td></tr>`;
+    }).join('')||'<tr><td colspan="3" class="empty">이번 학기 담당 강좌가 없습니다.</td></tr>';
 
-    main.innerHTML=head('내 대시보드',`${actSemId!=null&&actSem?actSem.name+' · ':''}${today.getMonth()+1}월 ${today.getDate()}일 (${WDN[wd]}) · ${currentAdmin.name} 강사님`)+noSemMsg+connBanner()+`
+    main.innerHTML=head('내 대시보드',`${today.getMonth()+1}월 ${today.getDate()}일 (${WDN[wd]}) · ${currentAdmin.name} 강사님`)+connBanner()+`
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;">
-        ${stat('내 강좌',myCourses.length+'개','var(--brand)')}
-        ${stat('오늘 수업',todayCourses.length+'개','var(--ink)')}
+        ${stat('내 강좌',tMine.length+'개','var(--brand)')}
+        ${stat('오늘 수업',tToday.length+'개','var(--ink)')}
         ${stat('내 학생',myStudents+'명','#5a6b8a')}
       </div>
-      <h1 style="font-size:15px;margin:0 0 10px;">📅 오늘의 수업 (${todayCourses.length})</h1>
+      <h1 style="font-size:15px;margin:0 0 4px;">📅 오늘의 수업 (${tToday.length})</h1>
+      <p class="muted" style="font-size:12px;margin:0 0 10px;">오늘(${today.getMonth()+1}/${today.getDate()} ${WDN[wd]}요일) 예정된 내 수업입니다.</p>
       <div class="card" style="margin-bottom:22px;"><table><thead><tr><th>강좌</th><th>시간·장소</th><th style="text-align:right;">등록</th></tr></thead>
       <tbody>${todayList}</tbody></table></div>
-      <h1 style="font-size:15px;margin:0 0 10px;">📚 내 담당 강좌</h1>
-      <div class="card"><table><thead><tr><th>강좌</th><th>요일·시간</th><th style="text-align:right;">등록</th></tr></thead>
+      <h1 style="font-size:15px;margin:0 0 4px;">📚 내 담당 강좌${actSemName?` · ${actSemName}`:''} (${tMine.length})</h1>
+      <p class="muted" style="font-size:12px;margin:0 0 10px;">${actSemName?`현재 활성 학기(${actSemName})의 담당 강좌입니다.`:'담당 강좌입니다.'}</p>
+      <div class="card"><table><thead><tr><th>강좌 · 신청 학생</th><th>요일·시간</th><th style="text-align:right;">등록</th></tr></thead>
       <tbody>${courseList}</tbody></table></div>
-      <p class="muted" style="font-size:12px;margin-top:12px;">강좌를 누르면 신청한 학생 명단을 볼 수 있어요. · 주간 시간표 메뉴에서 본인 시간표를 크게 볼 수 있어요.</p>`;
+      <p class="muted" style="font-size:12px;margin-top:12px;">강좌나 등록 인원을 누르면 학생 명단(학년·연락처·납부)을 자세히 볼 수 있어요.</p>`;
     return;
   }
 
