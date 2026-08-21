@@ -279,7 +279,7 @@ async function doSignup(){
   const phone=document.getElementById('lg_phone').value.trim();
   const sphone=document.getElementById('lg_sphone').value.trim();
   const school=document.getElementById('lg_school').value.trim();
-  if(!lid||lid.length<3){alert('아이디를 3자 이상 입력해 주세요.');return;}
+  if(!lid||lid.length<2){alert('아이디를 2자 이상 입력해 주세요.');return;}
   if(!pw||pw.length<4){alert('비밀번호를 4자 이상 입력해 주세요.');return;}
   if(pw!==pw2){alert('비밀번호가 일치하지 않습니다.');return;}
   if(!name){alert('이름을 입력해 주세요.');return;}
