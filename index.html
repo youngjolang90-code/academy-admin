@@ -426,7 +426,7 @@ function renderDashboard(){
 
   // 활성 학기 기준 (없으면 첫 학기)
   // ── 오늘 날짜가 학기 기간(시작일~종료일) 안에 드는 학기를 찾음 ──
-  const todayStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const todayStr=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
   const inRange=x=>{
     const st=x.start_date||null, ed=x.end_date||null;
     if(st && todayStr < st) return false;   // 아직 시작 전
