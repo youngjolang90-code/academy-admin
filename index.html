@@ -425,20 +425,37 @@ function renderDashboard(){
   const WDN=['','월','화','수','목','금','토','일'];
 
   // 활성 학기 기준 (없으면 첫 학기)
-  const actSem=(DB.semesters||[]).find(x=>x.is_active)||(DB.semesters||[])[0];
-  const actSemId=actSem?actSem.id:null;
-  const semFilter=c=>actSemId==null||c.semester_id==null||c.semester_id===actSemId;
-  // 강사면 본인 담당 강좌만 (+ 활성 학기)
+  // ── 오늘 날짜가 학기 기간(시작일~종료일) 안에 드는 학기를 찾음 ──
+  const todayStr=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const inRange=x=>{
+    const st=x.start_date||null, ed=x.end_date||null;
+    if(st && todayStr < st) return false;   // 아직 시작 전
+    if(ed && todayStr > ed) return false;   // 이미 종료
+    return true;
+  };
+  const sems=DB.semesters||[];
+  // 1순위: 기간에 해당하는 활성 학기 → 2순위: 기간에 해당하는 학기 → 3순위: 활성 학기
+  const runningSem = sems.find(x=>x.is_active && inRange(x))
+                  || sems.find(x=>inRange(x))
+                  || null;
+  const actSem = runningSem || sems.find(x=>x.is_active) || sems[0];
+  const actSemId = runningSem ? runningSem.id : null;   // 진행 중 학기가 없으면 오늘 수업 없음
+  const semFilter=c=>actSemId!=null && c.semester_id===actSemId;
+  // 강좌 범위: 진행 중 학기 기준 (강사면 본인 담당만)
   const myCourses=teacher
     ? DB.courses.filter(c=>hasInst(c,myInst)&&semFilter(c))
-    : DB.courses;
+    : DB.courses.filter(semFilter);
   const myCourseIds=new Set(myCourses.map(c=>c.id));
   const scopedEnr=teacher
     ? DB.enrollments.filter(e=>myCourseIds.has(e.course_id))
     : DB.enrollments;
 
-  // 오늘 수업 (본인 강좌 중 오늘 요일)
+  // 오늘 수업 (진행 중 학기의 강좌 중 오늘 요일)
   const todayCourses=myCourses.filter(c=>(c.sessions||[]).some(s=>s.weekday===wd));
+  // 진행 중인 학기가 없으면 안내 문구
+  const noSemMsg = actSemId==null
+    ? `<div class="db-alert warn" style="margin-bottom:12px;">📅 오늘(${todayStr})은 진행 중인 학기 기간이 아닙니다.${actSem?` (가장 가까운 학기: ${actSem.name}${actSem.start_date?` · ${actSem.start_date} 시작`:''})`:''}</div>`
+    : '';
 
   if(teacher){
     // ── 강사 전용 대시보드 ──
@@ -460,7 +477,7 @@ function renderDashboard(){
       return `<tr style="cursor:pointer;" onclick="teacherCourseStudents(${c.id})"><td><b>${c.title}</b></td><td class="muted" style="font-size:12px;">${when}</td><td style="text-align:right;">${cnt}명</td></tr>`;
     }).join('')||'<tr><td colspan="3" class="empty">담당 강좌가 없습니다.</td></tr>';
 
-    main.innerHTML=head('내 대시보드',`${actSem?actSem.name+' · ':''}${today.getMonth()+1}월 ${today.getDate()}일 (${WDN[wd]}) · ${currentAdmin.name} 강사님`)+connBanner()+`
+    main.innerHTML=head('내 대시보드',`${actSemId!=null&&actSem?actSem.name+' · ':''}${today.getMonth()+1}월 ${today.getDate()}일 (${WDN[wd]}) · ${currentAdmin.name} 강사님`)+noSemMsg+connBanner()+`
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;">
         ${stat('내 강좌',myCourses.length+'개','var(--brand)')}
         ${stat('오늘 수업',todayCourses.length+'개','var(--ink)')}
@@ -498,7 +515,10 @@ function renderDashboard(){
       }).join('')
     : '<tr><td colspan="4" class="empty">오늘 예정된 수업이 없습니다.</td></tr>';
 
-  main.innerHTML=head('대시보드',`${today.getMonth()+1}월 ${today.getDate()}일 (${WDN[wd]}) · 안녕하세요, ${currentAdmin?currentAdmin.name:''}님`)+connBanner()+`
+  const semLabel = actSemId!=null && actSem
+    ? `${actSem.name}${actSem.start_date&&actSem.end_date?` (${actSem.start_date}~${actSem.end_date})`:''} · `
+    : '';
+  main.innerHTML=head('대시보드',`${semLabel}${today.getMonth()+1}월 ${today.getDate()}일 (${WDN[wd]}) · 안녕하세요, ${currentAdmin?currentAdmin.name:''}님`)+connBanner()+noSemMsg+`
     <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;">
       ${stat('전체 학생',DB.students.length+'명','var(--brand)','students')}
       ${stat('전체 강좌',DB.courses.length+'개','var(--ink)','courses')}
