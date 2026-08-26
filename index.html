@@ -1328,10 +1328,7 @@ function tutorForm(cid, semId){
       <div id="tf_sessions">${sesRows}</div>
       <button class="btn sm" onclick="tutorAddSession()">+ 수업 추가</button>
     </div>
-    <div class="modal-actions" style="margin-top:16px;">
-      <button class="btn" onclick="closeModal()">취소</button>
-      <button class="btn primary" onclick="saveTutor(${cid||'null'},${(c&&c.semester_id)||semId||'null'},${(stu.id)||'null'},${enrId||'null'})">저장</button>
-    </div>`);
+    `, ()=>saveTutor(cid||null, (c&&c.semester_id)||semId||null, stu.id||null, enrId||null));
 }
 function tutorAddSession(){
   const box=document.getElementById('tf_sessions');
@@ -2650,11 +2647,15 @@ function masterForm(){
 // ════════ 공통 유틸 + 저장 ════════
 const val=id=>document.getElementById(id).value.trim();
 function openModal(title,body,onSave){
-  document.getElementById('modal').innerHTML=`<h3>${title}</h3>${body}
-    <div class="modal-actions"><button class="btn" onclick="closeModal()">취소</button>
-    <button class="btn primary" id="saveBtn">저장</button></div>`;
+  // onSave가 없으면(=본문에 자체 버튼이 있는 모달) 기본 취소/저장 버튼을 만들지 않음
+  const actions = onSave
+    ? `<div class="modal-actions"><button class="btn" onclick="closeModal()">취소</button>
+       <button class="btn primary" id="saveBtn">저장</button></div>`
+    : '';
+  document.getElementById('modal').innerHTML=`<h3>${title}</h3>${body}${actions}`;
   document.getElementById('overlay').classList.add('show');
-  document.getElementById('saveBtn').onclick=onSave;
+  const sb2=document.getElementById('saveBtn');
+  if(sb2&&onSave) sb2.onclick=onSave;
 }
 function closeModal(){document.getElementById('overlay').classList.remove('show');}
 document.getElementById('overlay').onclick=e=>{if(e.target.id==='overlay')closeModal();};
