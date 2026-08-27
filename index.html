@@ -807,7 +807,8 @@ function renderTimetable(){
       const cells=flat.filter(f=>f.weekday===wd&&(+f.start_time.split(':')[0])===h);
       rows+='<td>'+cells.map(f=>{
         const cls=f.room&&f.grade?'both':f.room?'room':f.grade?'warn':'ok';
-        return `<div class="cls ${cls}" onclick="explain(${f.course.id})">
+        const tuSty=f.course.is_tutoring===true?'border-left:4px solid #8b5cf6;':'';
+        return `<div class="cls ${cls}" style="${tuSty}" onclick="explain(${f.course.id})">
           <b>${name('subjects',f.course.subject_id)}</b><br>${instNames(f.course)}<br>
           ${hhmm(f.start_time)}~${hhmm(f.end_time)}<br>${f.room_id?name('rooms',f.room_id):'미정'}</div>`;
       }).join('')+'</td>';
