@@ -398,6 +398,8 @@ function teacherCourseStudents(cid){
       <td class="muted">${st.school||'-'}</td>
       <td class="muted" style="font-size:12px;">${st.parent_phone||st.student_phone||'-'}</td>
       <td style="text-align:center;"><span class="tag" style="background:${paid?'var(--brand-soft)':'var(--warn-bg)'};color:${paid?'var(--brand)':'var(--warn-ink)'};">${paid?'완납':'미납'}</span></td>
+      ${(canEdit()||isTeacher())?`<td style="text-align:center;">
+        <button class="btn sm" style="white-space:nowrap;" onclick="tutorFromStudent(${e.student_id},${cid})">과외 전환</button></td>`:''}
     </tr>`;
   };
   const list=enrolled.length?enrolled.map(rowOf).join('')
@@ -413,7 +415,7 @@ function teacherCourseStudents(cid){
     </div>
     <h3 style="font-size:13px;margin:0 0 8px;">👥 신청 학생 (${enrolled.length}명)</h3>
     <div class="card" style="padding:0;max-height:46vh;overflow:auto;">
-      <table><thead><tr><th></th><th>이름</th><th>학년</th><th>학교</th><th>연락처</th><th style="text-align:center;">납부</th></tr></thead>
+      <table><thead><tr><th></th><th>이름</th><th>학년</th><th>학교</th><th>연락처</th><th style="text-align:center;">납부</th>${(canEdit()||isTeacher())?'<th></th>':''}</tr></thead>
       <tbody>${list}</tbody></table>
     </div>
     ${waitList}
@@ -1269,7 +1271,7 @@ function renderCourses(){
   const tutorTable=`<div class="card" style="overflow-x:auto;"><table><thead><tr>
       <th>학생</th><th>학년</th><th>연락처</th><th>과목</th><th>강사</th><th>요일·시간</th><th>장소</th><th style="text-align:right;">수업료</th><th style="text-align:center;">납부</th>${canAdd?'<th></th>':''}
     </tr></thead><tbody>${tutorRows||`<tr><td colspan="${canAdd?10:9}" class="empty">등록된 과외가 없습니다.</td></tr>`}</tbody></table></div>
-    <p class="muted" style="font-size:12px;margin-top:10px;">과외는 학생 1명 기준으로 등록되며, 주간 시간표·공간 예약에도 함께 표시됩니다.${isTeacher()?' 강사 계정으로 등록하면 담당 강사가 본인으로 지정됩니다.':''}</p>`;
+    <p class="muted" style="font-size:12px;margin-top:10px;">과외는 <b>수강신청 페이지에서 가입한 학생</b>을 검색해 등록합니다. 주간 시간표·공간 예약에도 함께 표시됩니다.${isTeacher()?' 강사 계정으로 등록하면 담당 강사가 본인으로 지정됩니다.':''}</p>`;
 
   main.innerHTML=head(tutorMode?'과외 관리':'강좌 관리',
     selSemObj?`${selSemObj.name} · ${semCourses.length}${tutorMode?'건':'개 강좌'}`:`총 ${semCourses.length}${tutorMode?'건':'개 강좌'}`,
@@ -1315,12 +1317,17 @@ function tutorForm(cid, semId){
             return `<option value="${i.id}" ${sel}>${i.name}</option>`;}).join('')}</select></div>`;
 
   openModal(cid?'과외 수정':'과외 등록',`
-    <div class="field"><label>학생 이름</label><input id="tf_name" value="${(stu.name||'').replace(/"/g,'&quot;')}" placeholder="예: 김철수"></div>
-    <div class="row2" style="display:flex;gap:10px;">
-      <div class="field" style="flex:1;"><label>학년</label><select id="tf_grade">${gradeOpts}</select></div>
-      <div class="field" style="flex:1;"><label>연락처</label><input id="tf_phone" value="${(stu.parent_phone||'').replace(/"/g,'&quot;')}" placeholder="010-0000-0000"></div>
+    <div class="field"><label>학생 <span style="color:var(--brand);font-size:11.5px;font-weight:500;">· 가입한 학생 이름을 검색해 선택하세요</span></label>
+      <input id="tf_search" placeholder="학생 이름 입력 (예: 김철수)" autocomplete="off"
+        value="${(stu.name||'').replace(/"/g,'&quot;')}" oninput="tutorSearchStudent(this.value)">
+      <div id="tf_result" style="margin-top:6px;"></div>
+      <input type="hidden" id="tf_sid" value="${stu.id||''}">
     </div>
-    <div class="field"><label>학교 (선택)</label><input id="tf_school" value="${(stu.school||'').replace(/"/g,'&quot;')}" placeholder="○○중학교"></div>
+    <div id="tf_info" style="${stu.id?'':'display:none;'}background:var(--brand-soft);border-radius:8px;padding:11px 13px;margin-bottom:13px;font-size:13px;line-height:1.7;">
+      <div><b id="tf_iname">${stu.name||''}</b> <span id="tf_igrade" class="muted">${stu.grade!=null?gradeText(stu.grade):''}</span></div>
+      <div class="muted" id="tf_iphone">${stu.parent_phone||''}</div>
+      <div class="muted" id="tf_ischool">${stu.school||''}</div>
+    </div>
     <div class="field"><label>과목</label><select id="tf_subj">${DB.subjects.map(x=>`<option value="${x.id}" ${c&&c.subject_id===x.id?'selected':''}>${x.name}</option>`).join('')}</select></div>
     ${instBlock}
     <div class="field"><label>수업료(원)</label><input id="tf_fee" type="number" value="${c&&c.tuition?c.tuition:''}" placeholder="예: 300000"></div>
@@ -1329,6 +1336,56 @@ function tutorForm(cid, semId){
       <button class="btn sm" onclick="tutorAddSession()">+ 수업 추가</button>
     </div>
     `, ()=>saveTutor(cid||null, (c&&c.semester_id)||semId||null, stu.id||null, enrId||null));
+}
+// 담당 강좌의 학생을 과외로 전환 (학생 정보 자동 채움)
+function tutorFromStudent(studentId, fromCourseId){
+  if(!(canEdit()||isTeacher())){alert('권한이 없습니다.');return;}
+  const st=(DB.students||[]).find(x=>x.id===studentId);
+  if(!st){alert('학생 정보를 찾을 수 없습니다.');return;}
+  const src=DB.courses.find(c=>c.id===fromCourseId)||{};
+  closeModal();
+  courseMode='tutor'; window._tutorModeTouched=1;
+  // 과외 등록 폼을 열고, 해당 학생을 자동 선택
+  tutorForm(null, src.semester_id||null);
+  setTimeout(()=>{
+    tutorPickStudent(studentId);
+    // 과목은 원래 강좌 과목을 기본값으로
+    const sel=document.getElementById('tf_subj');
+    if(sel&&src.subject_id) sel.value=src.subject_id;
+  },50);
+}
+// 과외 등록 - 가입 학생 검색
+function tutorSearchStudent(q){
+  const box=document.getElementById('tf_result');
+  const info=document.getElementById('tf_info');
+  q=(q||'').trim();
+  document.getElementById('tf_sid').value='';
+  if(info) info.style.display='none';
+  if(!q){ box.innerHTML=''; return; }
+  // 과외 전용 학생은 제외하고, 가입한 학생만 검색
+  const hits=(DB.students||[]).filter(s=>!isTutorStudent(s) && (s.name||'').includes(q)).slice(0,8);
+  if(!hits.length){
+    box.innerHTML='<div class="muted" style="font-size:12px;padding:6px 2px;">일치하는 가입 학생이 없습니다. (학생이 먼저 수강신청 페이지에서 가입해야 합니다)</div>';
+    return;
+  }
+  box.innerHTML=hits.map(s=>`
+    <div onclick="tutorPickStudent(${s.id})" style="padding:8px 11px;border:1px solid var(--line);border-radius:8px;margin-bottom:5px;cursor:pointer;font-size:13px;"
+      onmouseover="this.style.background='var(--brand-soft)'" onmouseout="this.style.background=''">
+      <b>${s.name}</b> <span class="muted">${s.grade!=null?gradeText(s.grade):''}${s.school?' · '+s.school:''}</span>
+      <span class="muted" style="font-size:11.5px;"> · ${s.parent_phone||s.student_phone||'연락처 없음'}</span>
+    </div>`).join('');
+}
+function tutorPickStudent(id){
+  const s=(DB.students||[]).find(x=>x.id===id); if(!s)return;
+  document.getElementById('tf_sid').value=s.id;
+  document.getElementById('tf_search').value=s.name;
+  document.getElementById('tf_result').innerHTML='';
+  const info=document.getElementById('tf_info');
+  document.getElementById('tf_iname').textContent=s.name||'';
+  document.getElementById('tf_igrade').textContent=s.grade!=null?gradeText(s.grade):'';
+  document.getElementById('tf_iphone').textContent=s.parent_phone||s.student_phone||'연락처 없음';
+  document.getElementById('tf_ischool').textContent=s.school||'';
+  info.style.display='';
 }
 function tutorAddSession(){
   const box=document.getElementById('tf_sessions');
@@ -1343,11 +1400,11 @@ function tutorAddSession(){
   box.appendChild(div);
 }
 async function saveTutor(cid, semId, stuId, enrId){
-  const nm=(document.getElementById('tf_name').value||'').trim();
-  if(!nm){alert('학생 이름을 입력해 주세요.');return;}
-  const grade=+document.getElementById('tf_grade').value;
-  const phone=(document.getElementById('tf_phone').value||'').trim()||null;
-  const school=(document.getElementById('tf_school').value||'').trim()||null;
+  const sid=+(document.getElementById('tf_sid').value||0);
+  if(!sid){alert('학생을 검색해서 선택해 주세요.\n(수강신청 페이지에서 가입한 학생만 등록할 수 있습니다)');return;}
+  const stuObj=(DB.students||[]).find(x=>x.id===sid)||{};
+  const nm=stuObj.name||'';
+  const grade=stuObj.grade!=null?stuObj.grade:0;
   const subjId=+document.getElementById('tf_subj').value;
   const fee=parseInt((document.getElementById('tf_fee').value||'').replace(/[^0-9]/g,''))||null;
   const instId = isTeacher() ? currentAdmin.instructor_id
@@ -1368,11 +1425,8 @@ async function saveTutor(cid, semId, stuId, enrId){
   if(!LIVE){alert('미리보기 모드에서는 저장되지 않습니다.');return;}
 
   try{
-    // 1) 과외 학생 등록/수정
-    const rs=await sb.rpc('admin_upsert_tutoring_student',
-      {p_id:stuId||null, p_name:nm, p_grade:grade, p_phone:phone, p_school:school});
-    if(rs.error){alert('학생 저장 오류: '+rs.error.message+'\n\n"과외기능_준비.sql"을 실행했는지 확인해 주세요.');return;}
-    const studentId=rs.data;
+    // 1) 선택한 가입 학생을 그대로 사용 (새로 만들지 않음)
+    const studentId=sid;
 
     // 2) 대상(학년) 그룹 — 해당 학년을 포함하는 것 재사용, 없으면 생성
     let target=DB.target_groups.find(t=>t.grade_from===grade&&t.grade_to===grade);
@@ -1417,14 +1471,14 @@ async function delTutor(cid){
   const c=DB.courses.find(x=>x.id===cid);
   const en=(DB.enrollments||[]).find(e=>e.course_id===cid);
   const stu=en?((DB.students||[]).find(x=>x.id===en.student_id)||{}):{};
-  if(!confirm(`'${stu.name||c.title}' 과외를 삭제할까요?\n(과외 학생 정보도 함께 삭제됩니다)`))return;
+  if(!confirm(`'${stu.name||c.title}' 과외를 삭제할까요?\n(학생 계정은 유지되고, 과외 등록만 삭제됩니다)`))return;
   try{
     await sb.from('enrollments').delete().eq('course_id',cid);
     await sb.from('course_sessions').delete().eq('course_id',cid);
     await sb.from('course_instructors').delete().eq('course_id',cid);
     const r=await sb.from('courses').delete().eq('id',cid);
     if(r.error){alert('삭제 오류: '+r.error.message);return;}
-    if(stu.id && stu.is_tutoring) await sb.rpc('admin_delete_student',{p_id:stu.id});
+    // 가입한 학생 계정은 삭제하지 않음
     await loadAll(); renderCourses(); alert('삭제되었습니다.');
   }catch(err){ alert('삭제 중 오류: '+(err&&err.message?err.message:err)); }
 }
