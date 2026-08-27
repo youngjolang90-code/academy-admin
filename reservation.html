@@ -65,7 +65,8 @@
   .block .b-title{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .block .b-sub{opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:9.5px;}
   .block.course{background:#3b82f6;}
-  .block.resv{background:#8b5cf6;}
+  .block.tutor{background:#8b5cf6;}
+  .block.resv{background:#0d9488;}
 
   /* 모달 */
   .overlay{position:fixed;inset:0;background:rgba(20,25,35,.5);display:none;align-items:center;
@@ -126,7 +127,8 @@
 <div class="zonetabs" id="zoneTabs"></div>
 <div class="legend">
   <span><span class="dot" style="background:#3b82f6;"></span>플래닛</span>
-  <span><span class="dot" style="background:#8b5cf6;"></span>모임</span>
+  <span><span class="dot" style="background:#8b5cf6;"></span>과외</span>
+  <span><span class="dot" style="background:#0d9488;"></span>모임</span>
   <span style="margin-left:auto;color:var(--brand);">빈 칸을 눌러 모임을 추가하세요</span>
 </div>
 
@@ -273,7 +275,8 @@ function renderGrid(){
   // 강좌
   DB.sessions.filter(s=>s.weekday===sysWd).forEach(s=>{
     const c=DB.courses.find(x=>x.id===s.course_id); if(!c)return;
-    place(s.room_id,hm2m(s.start_time),hm2m(s.end_time),'course',
+    place(s.room_id,hm2m(s.start_time),hm2m(s.end_time),
+      c.is_tutoring===true?'tutor':'course',
       c.title, instName(c.id), {type:'course',id:c.id});
   });
   // 예약
