@@ -456,7 +456,7 @@ function renderDashboard(){
     return `<div class="db-cls ${live?'on':''}">
       <div style="flex:1;">
         <div style="font-weight:600;">${nm('subjects',t.en.course.subject_id)} · ${t.en.course.title}</div>
-        <div class="cmeta">${hhmm(t.s.start_time)}~${hhmm(t.s.end_time)} · ${instNames(t.en.course)}</div>
+        <div class="cmeta">${t.en.course.is_tutoring===true?'<span class="tag" style="background:#ede9fe;color:#5b21b6;">과외</span>':''}${hhmm(t.s.start_time)}~${hhmm(t.s.end_time)} · ${instNames(t.en.course)}</div>
       </div>${badge}</div>`;
   }).join('') : '<div class="muted" style="padding:6px 2px;">오늘 예정된 수업이 없습니다. 🎉</div>';
 
@@ -473,11 +473,14 @@ function renderDashboard(){
     const st=en.status==='WAITLIST'?'<span class="tag full">대기</span>':'';
     const confirmed=en.confirmed===true;
     const badge=confirmed?'<span class="tag" style="background:#dcefe7;color:#1f6b54;">확정</span>':'';
-    const cancelBtn=confirmed
+    const tutorBadge=en.course.is_tutoring===true?'<span class="tag" style="background:#ede9fe;color:#5b21b6;">과외</span>':'';
+    const cancelBtn=(en.course.is_tutoring===true)
+      ? '<span class="muted" style="font-size:11.5px;">과외 · 변경은 학원 문의</span>'
+      : confirmed
       ? '<span class="muted" style="font-size:11.5px;">확정됨 · 취소는 학원 문의</span>'
       : `<button class="db-cancel" onclick="cancelEnroll(${en.id},'${(en.course.title||'').replace(/'/g,'')}')">신청 취소</button>`;
     return `<div class="db-row" style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
-      <div style="flex:1;"><b>${en.course.title}</b> ${st}${badge}<div class="cmeta">${nm('subjects',en.course.subject_id)} · ${instNames(en.course)} · ${when}</div></div>
+      <div style="flex:1;"><b>${en.course.title}</b> ${tutorBadge}${st}${badge}<div class="cmeta">${nm('subjects',en.course.subject_id)} · ${instNames(en.course)} · ${when}</div></div>
       <div>${cancelBtn}</div>
     </div>`;
   }).join('') : '<div class="muted" style="padding:6px 2px;">아직 신청한 강좌가 없습니다.</div>';
@@ -498,7 +501,13 @@ function renderDashboard(){
       </div>`).join('')}</div>`:'';
 
   // 내 주간 시간표 (신청 강좌를 요일×교시 격자로)
-  const ttHtml=buildMyTimetable(mine);
+  const hasTutor=mine.some(en=>en.course.is_tutoring===true);
+  const ttLegend=hasTutor
+    ? `<div style="display:flex;gap:14px;font-size:11px;color:var(--ink-soft);margin-bottom:6px;">
+         <span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--brand-soft);border:1px solid var(--brand);vertical-align:-1px;margin-right:4px;"></i>강좌</span>
+         <span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#f3f0ff;border:1px solid #8b5cf6;vertical-align:-1px;margin-right:4px;"></i>과외</span>
+       </div>` : '';
+  const ttHtml=ttLegend+buildMyTimetable(mine);
 
   app.innerHTML=`
     <div class="userbar">
@@ -526,7 +535,8 @@ function buildMyTimetable(mine){
   mine.forEach(en=>(en.course.sessions||[]).forEach(s=>{
     if(!s.weekday||!s.start_time||!s.end_time)return;
     items.push({wd:+s.weekday,start:m(s.start_time),end:m(s.end_time),
-      label:en.course.title, st:hhmm(s.start_time), et:hhmm(s.end_time)});
+      label:en.course.title, st:hhmm(s.start_time), et:hhmm(s.end_time),
+      tutor:en.course.is_tutoring===true});
   }));
   if(!items.length)return '<div class="muted" style="padding:6px;">신청한 강좌가 없습니다.</div>';
 
@@ -556,8 +566,13 @@ function buildMyTimetable(mine){
       const c=cell[d+'_'+h];
       if(c&&c.type==='cont')return;                       // 위 칸의 rowspan이 채움
       if(c&&c.type==='start'){
-        html+=`<td rowspan="${c.span}" style="border:1px solid var(--brand);background:var(--brand-soft);color:var(--brand-deep);padding:3px;vertical-align:top;font-size:10px;line-height:1.3;">
-          <b>${c.it.label.length>10?c.it.label.slice(0,10)+'…':c.it.label}</b><br>${c.it.st}~${c.it.et}</td>`;
+        // 과외는 보라색, 일반 강좌는 골드색으로 구분
+        const tu=c.it.tutor;
+        const bd=tu?'#8b5cf6':'var(--brand)';
+        const bg=tu?'#f3f0ff':'var(--brand-soft)';
+        const fg=tu?'#5b21b6':'var(--brand-deep)';
+        html+=`<td rowspan="${c.span}" style="border:1px solid ${bd};background:${bg};color:${fg};padding:3px;vertical-align:top;font-size:10px;line-height:1.3;">
+          <b>${c.it.label.length>10?c.it.label.slice(0,10)+'…':c.it.label}</b>${tu?'<br><span style="font-size:9px;background:#8b5cf6;color:#fff;padding:0 4px;border-radius:6px;">과외</span>':''}<br>${c.it.st}~${c.it.et}</td>`;
       } else {
         html+='<td style="border:1px solid var(--line);height:26px;"></td>';
       }
