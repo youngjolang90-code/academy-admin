@@ -1251,7 +1251,7 @@ function renderCourses(){
     const enr=(DB.enrollments||[]).filter(e=>e.course_id===c.id&&e.status==='ENROLLED');
     const stu=enr.length?((DB.students||[]).find(x=>x.id===enr[0].student_id)||{}):{};
     const sess=(c.sessions||[]);
-    const when=sess.map(x=>`${WD[x.weekday]} ${hhmm(x.start_time)}~${hhmm(x.end_time)}`).join('<br>')||'-';
+    const when=sess.map(x=>`${WD[x.weekday]} ${hhmm(x.start_time)}~${hhmm(x.end_time)}`).join('<br>')||'<span style="color:var(--warn-ink);">일정 미정</span>';
     const room=sess.map(x=>x.room_id?name('rooms',x.room_id):'미정').filter((v,i,a)=>a.indexOf(v)===i).join('<br>');
     const paid=enr.length&&enr[0].payment_status==='PAID';
     return `<tr style="cursor:pointer;" onclick="teacherCourseStudents(${c.id})">
@@ -1266,6 +1266,7 @@ function renderCourses(){
       <td style="text-align:center;"><span class="tag" style="background:${paid?'var(--brand-soft)':'var(--warn-bg)'};color:${paid?'var(--brand)':'var(--warn-ink)'};">${paid?'완납':'미납'}</span></td>
       ${canAdd?`<td onclick="event.stopPropagation()"><div class="row-actions">
         <button class="btn sm" onclick="tutorForm(${c.id})">수정</button>
+        <button class="btn sm" onclick="assignToCourse(${c.id})" title="이 학생을 일반 강좌로 배정">강좌 배정</button>
         <button class="btn sm ghost" onclick="delTutor(${c.id})">삭제</button>
       </div></td>`:''}</tr>`;
   }).join('');
@@ -1277,7 +1278,7 @@ function renderCourses(){
   const tutorTable=`<div class="card" style="overflow-x:auto;"><table><thead><tr>
       <th>학생</th><th>학년</th><th>연락처</th><th>과목</th><th>강사</th><th>요일·시간</th><th>장소</th><th style="text-align:right;">수업료</th><th style="text-align:center;">납부</th>${canAdd?'<th></th>':''}
     </tr></thead><tbody>${tutorRows||`<tr><td colspan="${canAdd?10:9}" class="empty">등록된 과외가 없습니다.</td></tr>`}</tbody></table></div>
-    <p class="muted" style="font-size:12px;margin-top:10px;">과외는 <b>수강신청 페이지에서 가입한 학생</b>을 검색해 등록합니다. 주간 시간표·공간 예약에도 함께 표시됩니다.${isTeacher()?' 강사 계정으로 등록하면 담당 강사가 본인으로 지정됩니다.':''}</p>`;
+    <p class="muted" style="font-size:12px;margin-top:10px;">과외는 <b>수강신청 페이지에서 가입한 학생</b>을 검색해 등록합니다. 주간 시간표·공간 예약에도 함께 표시됩니다. <b>강좌 배정</b>을 누르면 일반 강좌로 옮길 수 있습니다.${isTeacher()?' 강사 계정으로 등록하면 담당 강사가 본인으로 지정됩니다.':''}</p>`;
 
   main.innerHTML=head(tutorMode?'과외 관리':'강좌 관리',
     `${selSemObj?selSemObj.name+' · ':''}${semCourses.length}${tutorMode?'건':'개 강좌'}${isTeacher()?' · 내 담당만 표시':''}`,
@@ -1337,11 +1338,69 @@ function tutorForm(cid, semId){
     <div class="field"><label>과목</label><select id="tf_subj">${DB.subjects.map(x=>`<option value="${x.id}" ${c&&c.subject_id===x.id?'selected':''}>${x.name}</option>`).join('')}</select></div>
     ${instBlock}
     <div class="field"><label>수업료(원)</label><input id="tf_fee" type="number" value="${c&&c.tuition?c.tuition:''}" placeholder="예: 300000"></div>
-    <div class="field"><label>수업 일정 (요일 · 시작 · 종료 · 장소)</label>
+    <div class="field"><label>수업 일정 <span class="muted" style="font-weight:400;font-size:11.5px;">· 정해지지 않았다면 비워두고 저장해도 됩니다</span></label>
       <div id="tf_sessions">${sesRows}</div>
       <button class="btn sm" onclick="tutorAddSession()">+ 수업 추가</button>
     </div>
     `, ()=>saveTutor(cid||null, (c&&c.semester_id)||semId||null, stu.id||null, enrId||null));
+}
+// 과외 학생을 일반 강좌로 배정 (과외 → 강좌 되돌리기)
+function assignToCourse(tutorCourseId){
+  if(!(canEdit()||isTeacher())){alert('권한이 없습니다.');return;}
+  const tc=DB.courses.find(x=>x.id===tutorCourseId); if(!tc)return;
+  const en=(DB.enrollments||[]).find(e=>e.course_id===tutorCourseId&&e.status==='ENROLLED');
+  if(!en){alert('이 과외에 연결된 학생을 찾을 수 없습니다.');return;}
+  const st=(DB.students||[]).find(x=>x.id===en.student_id)||{};
+  // 배정 가능한 일반 강좌 (같은 학기, 과외 아님, 강사면 본인 담당만)
+  const myInstId=isTeacher()?currentAdmin.instructor_id:null;
+  const cands=DB.courses.filter(c=>
+    c.is_tutoring!==true &&
+    c.semester_id===tc.semester_id &&
+    (myInstId==null||hasInst(c,myInstId))
+  ).sort((a,b)=>(name('subjects',a.subject_id)||'').localeCompare(name('subjects',b.subject_id)||'','ko'));
+
+  if(!cands.length){ alert('배정할 수 있는 일반 강좌가 없습니다.'); return; }
+
+  const opts=cands.map(c=>{
+    const when=(c.sessions||[]).map(x=>`${WD[x.weekday]} ${hhmm(x.start_time)}~${hhmm(x.end_time)}`).join(', ');
+    const cnt=(DB.enrollments||[]).filter(e=>e.course_id===c.id&&e.status==='ENROLLED').length;
+    return `<option value="${c.id}">${name('subjects',c.subject_id)} · ${c.title}${when?' ('+when+')':''} · ${cnt}명</option>`;
+  }).join('');
+
+  openModal('강좌 배정',`
+    <div style="background:var(--brand-soft);border-radius:8px;padding:11px 13px;margin-bottom:14px;font-size:13px;">
+      <b>${st.name||''}</b> <span class="muted">${st.grade!=null?gradeText(st.grade):''}</span><br>
+      <span class="muted" style="font-size:12px;">현재: ${tc.title} (과외)</span>
+    </div>
+    <div class="field"><label>배정할 강좌</label><select id="ac_course">${opts}</select></div>
+    <div class="field"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+      <input type="checkbox" id="ac_del" checked style="width:auto;"> 이 과외 등록은 삭제
+    </label>
+    <p class="muted" style="font-size:11.5px;margin:4px 0 0;">체크를 해제하면 과외를 유지한 채 강좌에도 함께 등록됩니다.</p></div>
+    `, ()=>runAssignToCourse(tutorCourseId, en.student_id, en.id));
+}
+async function runAssignToCourse(tutorCourseId, studentId, tutorEnrId){
+  const newCourseId=+document.getElementById('ac_course').value;
+  const delTutorCourse=document.getElementById('ac_del').checked;
+  if(!newCourseId){alert('배정할 강좌를 선택해 주세요.');return;}
+  if(!LIVE){alert('미리보기 모드에서는 저장되지 않습니다.');return;}
+  try{
+    // 이미 그 강좌에 등록돼 있으면 중복 방지
+    const dup=(DB.enrollments||[]).some(e=>e.course_id===newCourseId&&e.student_id===studentId&&e.status==='ENROLLED');
+    if(!dup){
+      const r=await sb.from('enrollments').insert({student_id:studentId, course_id:newCourseId,
+        status:'ENROLLED', confirmed:true, payment_status:'UNPAID'});
+      if(r.error){alert('배정 오류: '+r.error.message);return;}
+    }
+    if(delTutorCourse){
+      await sb.from('enrollments').delete().eq('id',tutorEnrId);
+      await sb.from('course_sessions').delete().eq('course_id',tutorCourseId);
+      await sb.from('course_instructors').delete().eq('course_id',tutorCourseId);
+      await sb.from('courses').delete().eq('id',tutorCourseId);
+    }
+    await loadAll(); closeModal(); renderCourses();
+    alert('✅ 강좌로 배정되었습니다.');
+  }catch(err){ alert('배정 중 오류: '+(err&&err.message?err.message:err)); }
 }
 // 담당 강좌의 학생을 과외로 전환 (학생 정보 자동 채움)
 function tutorFromStudent(studentId, fromCourseId){
@@ -1349,6 +1408,8 @@ function tutorFromStudent(studentId, fromCourseId){
   const st=(DB.students||[]).find(x=>x.id===studentId);
   if(!st){alert('학생 정보를 찾을 수 없습니다.');return;}
   const src=DB.courses.find(c=>c.id===fromCourseId)||{};
+  if(!confirm(`'${st.name}' 학생을 과외로 전환할까요?\n\n전환하면 '${src.title||''}' 강좌의 신청 명단에서 제외됩니다.`))return;
+  window._tutorFromCourse=fromCourseId;   // 저장 시 원래 강좌에서 제외하기 위해 기억
   closeModal();
   courseMode='tutor'; window._tutorModeTouched=1;
   // 과외 등록 폼을 열고, 해당 학생을 자동 선택
@@ -1423,7 +1484,7 @@ async function saveTutor(cid, semId, stuId, enrId){
     end_time:r.querySelector('.ts_et').value,
     room_id:r.querySelector('.ts_room').value?+r.querySelector('.ts_room').value:null
   })).filter(x=>x.start_time&&x.end_time);
-  if(!sessions.length){alert('수업 일정을 최소 1개 입력해 주세요.');return;}
+  // 과외는 일정이 유동적이므로 비워둘 수 있음
   // 학기
   let semester_id=semId;
   if(!semester_id){ const a=(DB.semesters||[]).find(x=>x.is_active)||(DB.semesters||[])[0]; semester_id=a?a.id:null; }
@@ -1457,8 +1518,8 @@ async function saveTutor(cid, semId, stuId, enrId){
       if(ins.error){alert('과외 저장 오류: '+ins.error.message);return;}
       courseId=ins.data[0].id;
     }
-    // 4) 수업 일정
-    await sb.from('course_sessions').insert(sessions.map(x=>({course_id:courseId,
+    // 4) 수업 일정 (없으면 건너뜀 — 과외는 일정 미정 허용)
+    if(sessions.length) await sb.from('course_sessions').insert(sessions.map(x=>({course_id:courseId,
       room_id:x.room_id, weekday:x.weekday, start_time:x.start_time, end_time:x.end_time,
       duration_min:durMin(x.start_time,x.end_time)})));
     // 5) 강사 연결
@@ -1467,6 +1528,13 @@ async function saveTutor(cid, semId, stuId, enrId){
     if(!enrId){
       await sb.from('enrollments').insert({student_id:studentId, course_id:courseId,
         status:'ENROLLED', confirmed:true, payment_status:'UNPAID'});
+    }
+    // 과외 전환이면 원래 강좌의 신청 내역 제거
+    if(window._tutorFromCourse){
+      const src=window._tutorFromCourse;
+      const old=(DB.enrollments||[]).find(e=>e.course_id===src&&e.student_id===studentId);
+      if(old){ await sb.from('enrollments').delete().eq('id',old.id); }
+      window._tutorFromCourse=null;
     }
     await loadAll(); closeModal(); courseMode='tutor'; renderCourses();
     alert('✅ 저장되었습니다.');
