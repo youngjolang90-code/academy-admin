@@ -399,7 +399,10 @@ function teacherCourseStudents(cid){
       <td class="muted" style="font-size:12px;">${st.parent_phone||st.student_phone||'-'}</td>
       <td style="text-align:center;"><span class="tag" style="background:${paid?'var(--brand-soft)':'var(--warn-bg)'};color:${paid?'var(--brand)':'var(--warn-ink)'};">${paid?'완납':'미납'}</span></td>
       ${(canEdit()||isTeacher())?`<td style="text-align:center;">
-        <button class="btn sm" style="white-space:nowrap;" onclick="tutorFromStudent(${e.student_id},${cid})">과외 전환</button></td>`:''}
+        ${c.is_tutoring===true
+          ? `<button class="btn sm" style="white-space:nowrap;" onclick="assignToCourse(${cid})" title="일반 강좌로 배정">강좌 배정</button>`
+          : `<button class="btn sm" style="white-space:nowrap;" onclick="tutorFromStudent(${e.student_id},${cid})" title="과외로 전환">과외 전환</button>`}
+      </td>`:''}
     </tr>`;
   };
   const list=enrolled.length?enrolled.map(rowOf).join('')
@@ -409,9 +412,9 @@ function teacherCourseStudents(cid){
        <div class="card" style="padding:0;"><table><tbody>${waiting.map(rowOf).join('')}</tbody></table></div>`
     : '';
   const when=(c.sessions||[]).map(x=>`${WD[x.weekday]} ${hhmm(x.start_time)}~${hhmm(x.end_time)}${x.room_id?' · '+name('rooms',x.room_id):''}`).join('<br>')||'-';
-  openModal(c.title,`
+  openModal(c.title+(c.is_tutoring===true?' (과외)':''),`
     <div class="muted" style="font-size:13px;margin-bottom:12px;line-height:1.6;">
-      ${name('subjects',c.subject_id)} · ${name('target_groups',c.target_id)}<br>${when}
+      ${c.is_tutoring===true?'<span class="tag" style="background:#ede9fe;color:#5b21b6;">과외</span> ':''}${name('subjects',c.subject_id)} · ${name('target_groups',c.target_id)}<br>${when}
     </div>
     <h3 style="font-size:13px;margin:0 0 8px;">👥 신청 학생 (${enrolled.length}명)</h3>
     <div class="card" style="padding:0;max-height:46vh;overflow:auto;">
@@ -465,10 +468,12 @@ function renderDashboard(){
     // ── 강사 전용 대시보드 ──
     // 오늘의 수업: 학기와 무관하게 "오늘 요일"에 수업이 있는 내 강좌 전부
     const myAllCourses=DB.courses.filter(c=>hasInst(c,myInst));
-    const tToday=myAllCourses.filter(c=>(c.sessions||[]).some(s=>s.weekday===wd));
+    const tToday=myAllCourses.filter(c=>(c.sessions||[]).some(s=>s.weekday===wd));   // 과외 포함 (오늘 수업이므로)
     // 내 담당 강좌: 활성 학기(활성 학기가 없으면 전체) 기준
     const actId=(sems.find(x=>x.is_active)||{}).id ?? null;
-    const tMine=actId!=null ? myAllCourses.filter(c=>c.semester_id===actId) : myAllCourses;
+    // 내 담당 강좌: 과외는 제외 (과외는 강좌 관리 → 과외 탭에서 관리)
+    const tMine=(actId!=null ? myAllCourses.filter(c=>c.semester_id===actId) : myAllCourses)
+                  .filter(c=>c.is_tutoring!==true);
     const tMineIds=new Set(tMine.map(c=>c.id));
     const myStudents=new Set(DB.enrollments.filter(e=>tMineIds.has(e.course_id)).map(e=>e.student_id)).size;
     const actSemName=(sems.find(x=>x.is_active)||{}).name||'';
@@ -484,7 +489,8 @@ function renderDashboard(){
           const ses=(c.sessions||[]).filter(s=>s.weekday===wd).map(s=>`${hhmm(s.start_time)}~${hhmm(s.end_time)} · ${s.room_id?name('rooms',s.room_id):'미정'}`).join('<br>');
           const semTag=(c.semester_id!=null&&actId!=null&&c.semester_id!==actId)
             ? ` <span class="tag" style="background:var(--line-soft);color:var(--ink-soft);">${(sems.find(x=>x.id===c.semester_id)||{}).name||'다른 학기'}</span>` : '';
-          return `<tr style="cursor:pointer;" onclick="teacherCourseStudents(${c.id})"><td><b>${c.title}</b>${semTag}</td><td class="muted">${ses}</td><td style="text-align:right;">${cntBtn(c.id)}</td></tr>`;
+          const tuTag=c.is_tutoring===true?' <span class="tag" style="background:#ede9fe;color:#5b21b6;">과외</span>':'';
+          return `<tr style="cursor:pointer;" onclick="teacherCourseStudents(${c.id})"><td><b>${c.title}</b>${tuTag}${semTag}</td><td class="muted">${ses}</td><td style="text-align:right;">${cntBtn(c.id)}</td></tr>`;
         }).join('')
       : '<tr><td colspan="3" class="empty">오늘 예정된 수업이 없습니다.</td></tr>';
     // 내 강좌: 활성 학기 기준 + 신청 학생 바로 확인
@@ -512,7 +518,7 @@ function renderDashboard(){
       <div class="card" style="margin-bottom:22px;"><table><thead><tr><th>강좌</th><th>시간·장소</th><th style="text-align:right;">등록</th></tr></thead>
       <tbody>${todayList}</tbody></table></div>
       <h1 style="font-size:15px;margin:0 0 4px;">📚 내 담당 강좌${actSemName?` · ${actSemName}`:''} (${tMine.length})</h1>
-      <p class="muted" style="font-size:12px;margin:0 0 10px;">${actSemName?`현재 활성 학기(${actSemName})의 담당 강좌입니다.`:'담당 강좌입니다.'}</p>
+      <p class="muted" style="font-size:12px;margin:0 0 10px;">${actSemName?`현재 활성 학기(${actSemName})의 담당 강좌입니다.`:'담당 강좌입니다.'} 과외는 강좌 관리 → 과외 탭에서 볼 수 있어요.</p>
       <div class="card"><table><thead><tr><th>강좌 · 신청 학생</th><th>요일·시간</th><th style="text-align:right;">등록</th></tr></thead>
       <tbody>${courseList}</tbody></table></div>
       <p class="muted" style="font-size:12px;margin-top:12px;">강좌나 등록 인원을 누르면 학생 명단(학년·연락처·납부)을 자세히 볼 수 있어요.</p>`;
@@ -533,7 +539,8 @@ function renderDashboard(){
     ? todayCourses.map(c=>{
         const ses=(c.sessions||[]).filter(s=>s.weekday===wd).map(s=>`${hhmm(s.start_time)}~${hhmm(s.end_time)}`).join(', ');
         const cnt=DB.enrollments.filter(e=>e.course_id===c.id&&e.status==='ENROLLED').length;
-        return `<tr><td><b>${c.title}</b></td><td class="muted">${instNames(c)}</td><td class="muted">${ses}</td>
+        const tuTag=c.is_tutoring===true?' <span class="tag" style="background:#ede9fe;color:#5b21b6;">과외</span>':'';
+        return `<tr><td><b>${c.title}</b>${tuTag}</td><td class="muted">${instNames(c)}</td><td class="muted">${ses}</td>
           <td style="text-align:right;">
             <button class="btn sm ghost" style="color:var(--brand);font-weight:600;" title="신청 학생 명단 보기"
               onclick="courseStudentList(${c.id})">${cnt}명 ›</button>
@@ -2098,12 +2105,19 @@ function studentDetail(id){
     const conf=e.confirmed===true?' <span class="tag" style="font-size:10px;background:#dcefe7;color:#1f6b54;">확정</span>':'';
     const payBtn=ps==='UNPAID'?`<button class="btn sm" style="margin-top:4px;" onclick="payOneInDetail(${e.id},${s.id})">완납</button>`:'';
     const cancelBtn=canEdit()?`<button class="btn sm ghost" style="margin-top:4px;color:#a32d2d;" onclick="adminCancelEnroll(${e.id},${s.id})">수강 취소</button>`:'';
+    const isTu=c.is_tutoring===true;
+    const tuBadge=isTu?' <span class="tag" style="font-size:10px;background:#ede9fe;color:#5b21b6;">과외</span>':'';
+    const switchBtn=(canEdit()||isTeacher())
+      ? (isTu
+          ? `<button class="btn sm" style="margin-top:4px;" onclick="closeModal();assignToCourse(${c.id})">강좌 배정</button>`
+          : `<button class="btn sm" style="margin-top:4px;" onclick="closeModal();tutorFromStudent(${s.id},${c.id})">과외 전환</button>`)
+      : '';
     return `<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);">
-      <div><b>${c.title}</b>${wait}${conf}<div class="cmeta" style="font-size:11.5px;">${name('subjects',c.subject_id)} · ${instNames(c)} · ${when||'-'}</div></div>
+      <div><b>${c.title}</b>${tuBadge}${wait}${conf}<div class="cmeta" style="font-size:11.5px;">${name('subjects',c.subject_id)} · ${instNames(c)} · ${when||'일정 미정'}</div></div>
       <div style="text-align:right;white-space:nowrap;">
         <div style="font-variant-numeric:tabular-nums;">${tui?tui.toLocaleString()+'원':'-'}</div>
         <div style="font-size:11px;color:${pay[1]};font-weight:600;">${pay[0]}</div>
-        <div style="display:flex;gap:4px;justify-content:flex-end;">${payBtn}${cancelBtn}</div>
+        <div style="display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap;">${payBtn}${switchBtn}${cancelBtn}</div>
       </div></div>`;
   }).filter(Boolean).join('')||'<div class="muted" style="padding:10px 0;">신청한 강좌가 없습니다.</div>';
 
