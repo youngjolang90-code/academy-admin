@@ -1179,7 +1179,10 @@ function renderCourses(){
     const act=sems.find(s=>s.is_active); selSem=act?act.id:(sems[0]?sems[0].id:null);
   }
   const isTutor=c=>c.is_tutoring===true;
-  const semCourses=DB.courses.filter(c=>c.semester_id===selSem && (courseMode==='tutor'?isTutor(c):!isTutor(c))).slice().sort((a,b)=>{
+  // 강사 계정은 본인이 담당한 강좌만 표시
+  const myInstId=isTeacher()?currentAdmin.instructor_id:null;
+  const mineOnly=c=>myInstId==null||hasInst(c,myInstId);
+  const semCourses=DB.courses.filter(c=>c.semester_id===selSem && (courseMode==='tutor'?isTutor(c):!isTutor(c)) && mineOnly(c)).slice().sort((a,b)=>{
     // 1순위: 과목명 ㄱㄴ순 (과목명이 같으면 확실히 인접)
     const subA=DB.subjects.find(s=>s.id===a.subject_id), subB=DB.subjects.find(s=>s.id===b.subject_id);
     const sa=(subA&&subA.name)||'힣', sb2=(subB&&subB.name)||'힣'; // 과목 없으면 맨 뒤로
@@ -1275,7 +1278,7 @@ function renderCourses(){
     <p class="muted" style="font-size:12px;margin-top:10px;">과외는 <b>수강신청 페이지에서 가입한 학생</b>을 검색해 등록합니다. 주간 시간표·공간 예약에도 함께 표시됩니다.${isTeacher()?' 강사 계정으로 등록하면 담당 강사가 본인으로 지정됩니다.':''}</p>`;
 
   main.innerHTML=head(tutorMode?'과외 관리':'강좌 관리',
-    selSemObj?`${selSemObj.name} · ${semCourses.length}${tutorMode?'건':'개 강좌'}`:`총 ${semCourses.length}${tutorMode?'건':'개 강좌'}`,
+    `${selSemObj?selSemObj.name+' · ':''}${semCourses.length}${tutorMode?'건':'개 강좌'}${isTeacher()?' · 내 담당만 표시':''}`,
     `${tutorMode?'':`<button class="btn sm" onclick="exportExcel('courses')" style="margin-right:6px;">엑셀 저장</button>`}${addBtn}`)+connBanner()+`
     ${modeBtns}
     ${sems.length?`<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">${chips}</div>`:'<p class="muted" style="margin-bottom:12px;">등록된 학기가 없습니다. 기초자료 → 학기에서 먼저 추가하세요.</p>'}
@@ -2024,12 +2027,13 @@ function studentDetail(id){
     const wait=e.status==='WAITLIST'?' <span class="tag full" style="font-size:10px;">대기</span>':'';
     const conf=e.confirmed===true?' <span class="tag" style="font-size:10px;background:#dcefe7;color:#1f6b54;">확정</span>':'';
     const payBtn=ps==='UNPAID'?`<button class="btn sm" style="margin-top:4px;" onclick="payOneInDetail(${e.id},${s.id})">완납</button>`:'';
+    const cancelBtn=canEdit()?`<button class="btn sm ghost" style="margin-top:4px;color:#a32d2d;" onclick="adminCancelEnroll(${e.id},${s.id})">수강 취소</button>`:'';
     return `<div style="display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line-soft);">
       <div><b>${c.title}</b>${wait}${conf}<div class="cmeta" style="font-size:11.5px;">${name('subjects',c.subject_id)} · ${instNames(c)} · ${when||'-'}</div></div>
       <div style="text-align:right;white-space:nowrap;">
         <div style="font-variant-numeric:tabular-nums;">${tui?tui.toLocaleString()+'원':'-'}</div>
         <div style="font-size:11px;color:${pay[1]};font-weight:600;">${pay[0]}</div>
-        ${payBtn}
+        <div style="display:flex;gap:4px;justify-content:flex-end;">${payBtn}${cancelBtn}</div>
       </div></div>`;
   }).filter(Boolean).join('')||'<div class="muted" style="padding:10px 0;">신청한 강좌가 없습니다.</div>';
 
@@ -2067,6 +2071,25 @@ function studentDetail(id){
   document.getElementById('overlay').classList.add('show');
 }
 // 상세 모달 안에서 강좌 하나 완납
+async // 관리자 직권 수강 취소
+async function adminCancelEnroll(enrId, studentId){
+  if(!canEdit()){alert('관리자만 취소할 수 있습니다.');return;}
+  const e=(DB.enrollments||[]).find(x=>x.id===enrId);
+  const c=e?DB.courses.find(x=>x.id===e.course_id):null;
+  const st=(DB.students||[]).find(x=>x.id===studentId)||{};
+  if(!confirm(`'${st.name||''}' 학생의 '${c?c.title:''}' 수강을 취소할까요?\n\n신청 내역이 삭제되며 되돌릴 수 없습니다.`))return;
+  try{
+    if(LIVE){
+      const r=await sb.from('enrollments').delete().eq('id',enrId);
+      if(r.error){alert('취소 오류: '+r.error.message);return;}
+    }
+    DB.enrollments=(DB.enrollments||[]).filter(x=>x.id!==enrId);
+    closeModal();
+    render();
+    setTimeout(()=>studentDetail(studentId),80);   // 상세 다시 열어 결과 확인
+    alert('수강이 취소되었습니다.');
+  }catch(err){ alert('취소 중 오류: '+(err&&err.message?err.message:err)); }
+}
 async function payOneInDetail(enrollId,sid){
   if(LIVE){
     const{error}=await sb.from('enrollments').update({payment_status:'PAID'}).eq('id',enrollId);
