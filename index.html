@@ -1178,6 +1178,8 @@ function renderCourses(){
   if(selSem===null){
     const act=sems.find(s=>s.is_active); selSem=act?act.id:(sems[0]?sems[0].id:null);
   }
+  // 강사는 과외 탭으로 시작 (반드시 강좌를 거르기 전에 결정해야 함)
+  if(isTeacher() && !window._tutorModeTouched) courseMode='tutor';
   // 과외 판별: 과외 창에서 등록한 것만 (is_tutoring 표시 기준)
   const isTutor=c=>c.is_tutoring===true;
   // 강사 계정은 본인이 담당한 강좌만 표시
@@ -1230,7 +1232,6 @@ function renderCourses(){
       </div></td>`:''}</tr>`;
   }).join('');
 
-  if(isTeacher() && !window._tutorModeTouched) courseMode='tutor';  // 강사는 과외 탭으로 시작
   const tutorMode=courseMode==='tutor';
   const canAdd=canEdit()||isTeacher();   // 과외는 강사도 등록 가능
   const addBtn = tutorMode
