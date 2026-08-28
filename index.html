@@ -1248,12 +1248,14 @@ function renderCourses(){
   const tutorRows=semCourses.map(c=>{
     const enr=(DB.enrollments||[]).filter(e=>e.course_id===c.id&&e.status==='ENROLLED');
     const stu=enr.length?((DB.students||[]).find(x=>x.id===enr[0].student_id)||{}):{};
+    // 안전장치: 과외인데 학생이 2명 이상이면 일반 강좌가 잘못 표시된 것
+    const manyStu=enr.length>1;
     const sess=(c.sessions||[]);
     const when=sess.map(x=>`${WD[x.weekday]} ${hhmm(x.start_time)}~${hhmm(x.end_time)}`).join('<br>')||'-';
     const room=sess.map(x=>x.room_id?name('rooms',x.room_id):'미정').filter((v,i,a)=>a.indexOf(v)===i).join('<br>');
     const paid=enr.length&&enr[0].payment_status==='PAID';
     return `<tr style="cursor:pointer;" onclick="teacherCourseStudents(${c.id})">
-      <td><b>${stu.name||c.title}</b></td>
+      <td><b>${manyStu?c.title:(stu.name||c.title)}</b>${manyStu?` <span class="tag" style="background:var(--warn-bg);color:var(--warn-ink);">일반강좌? ${enr.length}명</span>`:''}</td>
       <td class="muted">${stu.grade!=null?gradeText(stu.grade):'-'}</td>
       <td class="muted" style="font-size:12px;">${stu.parent_phone||'-'}</td>
       <td class="muted">${name('subjects',c.subject_id)}</td>
@@ -1275,6 +1277,7 @@ function renderCourses(){
   const tutorTable=`<div class="card" style="overflow-x:auto;"><table><thead><tr>
       <th>학생</th><th>학년</th><th>연락처</th><th>과목</th><th>강사</th><th>요일·시간</th><th>장소</th><th style="text-align:right;">수업료</th><th style="text-align:center;">납부</th>${canAdd?'<th></th>':''}
     </tr></thead><tbody>${tutorRows||`<tr><td colspan="${canAdd?10:9}" class="empty">등록된 과외가 없습니다.</td></tr>`}</tbody></table></div>
+    ${semCourses.some(c=>(DB.enrollments||[]).filter(e=>e.course_id===c.id&&e.status==='ENROLLED').length>1)?`<div class="db-alert warn" style="margin-top:10px;padding:10px 13px;border-radius:8px;background:var(--warn-bg);color:var(--warn-ink);font-size:12.5px;">⚠️ 학생이 2명 이상인 항목이 있습니다. 일반 강좌가 과외로 잘못 표시된 것일 수 있어요. (「과외_잘못표시_정리.sql」로 정리 가능)</div>`:''}
     <p class="muted" style="font-size:12px;margin-top:10px;">과외는 <b>수강신청 페이지에서 가입한 학생</b>을 검색해 등록합니다. 주간 시간표·공간 예약에도 함께 표시됩니다.${isTeacher()?' 강사 계정으로 등록하면 담당 강사가 본인으로 지정됩니다.':''}</p>`;
 
   main.innerHTML=head(tutorMode?'과외 관리':'강좌 관리',
