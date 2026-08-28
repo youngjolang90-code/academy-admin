@@ -1178,10 +1178,8 @@ function renderCourses(){
   if(selSem===null){
     const act=sems.find(s=>s.is_active); selSem=act?act.id:(sems[0]?sems[0].id:null);
   }
-  // 과외 판별: 표시가 true이면서 신청 학생이 1명 이하일 때만 과외로 취급
-  // (일반 강좌가 잘못 표시된 경우 자동으로 일반 강좌 쪽에 보이게 함)
-  const enrCnt=cid=>(DB.enrollments||[]).filter(e=>e.course_id===cid&&e.status==='ENROLLED').length;
-  const isTutor=c=>c.is_tutoring===true && enrCnt(c.id)<=1;
+  // 과외 판별: 과외 창에서 등록한 것만 (is_tutoring 표시 기준)
+  const isTutor=c=>c.is_tutoring===true;
   // 강사 계정은 본인이 담당한 강좌만 표시
   const myInstId=isTeacher()?currentAdmin.instructor_id:null;
   const mineOnly=c=>myInstId==null||hasInst(c,myInstId);
