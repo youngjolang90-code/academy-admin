@@ -1289,7 +1289,9 @@ function renderCourses(){
 
   main.innerHTML=head(tutorMode?'과외 관리':'강좌 관리',
     `${selSemObj?selSemObj.name+' · ':''}${semCourses.length}${tutorMode?'건':'개 강좌'}${isTeacher()?' · 내 담당만 표시':''}`,
-    `${tutorMode?'':`<button class="btn sm" onclick="exportExcel('courses')" style="margin-right:6px;">엑셀 저장</button>`}${addBtn}`)+connBanner()+`
+    `${tutorMode
+        ? `<button class="btn sm" onclick="exportExcel('tutoring')" style="margin-right:6px;">엑셀 저장</button>`
+        : `<button class="btn sm" onclick="exportExcel('courses')" style="margin-right:6px;">엑셀 저장</button>`}${addBtn}`)+connBanner()+`
     ${modeBtns}
     ${sems.length?`<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">${chips}</div>`:'<p class="muted" style="margin-bottom:12px;">등록된 학기가 없습니다. 기초자료 → 학기에서 먼저 추가하세요.</p>'}
     ${tutorMode?tutorTable:normalTable}
@@ -3194,6 +3196,77 @@ async function backupToSheet(){
 const name2=(arr,id)=>(DB[arr].find(x=>x.id===id)||{}).name||'-';
 
 // ════════ 엑셀 내보내기 (화면별) ════════
+// 과외 명단 엑셀 — 강사별 묶음 + 셀 병합 (강사이름 / 과목명 / 학생명 / 과외비)
+function exportTutoringExcel(){
+  if(typeof XLSX==='undefined'){alert('엑셀 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return;}
+  const sems=DB.semesters||[];
+  let semId=courseSemId;
+  if(semId===null){ const a=sems.find(x=>x.is_active); semId=a?a.id:(sems[0]?sems[0].id:null); }
+  const semName=(sems.find(x=>x.id===semId)||{}).name||'';
+  const myInstId=isTeacher()?currentAdmin.instructor_id:null;
+
+  // 과외 목록 수집
+  const list=DB.courses.filter(c=>c.is_tutoring===true
+    && (semId==null||c.semester_id===semId)
+    && (myInstId==null||hasInst(c,myInstId)));
+  if(!list.length){alert('저장할 과외가 없습니다.');return;}
+
+  // 행 만들기: {강사, 과목, 학생, 과외비}
+  const raw=list.map(c=>{
+    const enr=(DB.enrollments||[]).filter(e=>e.course_id===c.id&&e.status==='ENROLLED');
+    const st=enr.length?((DB.students||[]).find(x=>x.id===enr[0].student_id)||{}):{};
+    return {
+      강사:instNames(c)||'(미지정)',
+      과목:name('subjects',c.subject_id)||'',
+      학생:st.name||'',
+      과외비:c.tuition||0
+    };
+  });
+
+  // 강사 → 과목 순으로 정렬 (같은 강사·과목끼리 붙게)
+  raw.sort((a,b)=>a.강사.localeCompare(b.강사,'ko')
+    || a.과목.localeCompare(b.과목,'ko')
+    || a.학생.localeCompare(b.학생,'ko'));
+
+  // 시트 데이터 (헤더 + 본문 + 합계)
+  const title=`${semName?semName+' ':''}과외`;
+  const aoa=[[title,'','',''], ['강사 이름','과목명','학생명','과외비']];
+  raw.forEach(r=>aoa.push([r.강사, r.과목, r.학생, r.과외비]));
+  aoa.push(['','총 인원', raw.length+'명', raw.reduce((s2,r)=>s2+(+r.과외비||0),0)]);
+
+  const ws=XLSX.utils.aoa_to_sheet(aoa);
+
+  // 같은 값이 연속되면 세로 병합 (강사=0열, 과목=1열)
+  const merges=[{s:{r:0,c:0},e:{r:0,c:3}}];   // 제목 가로 병합
+  const mergeCol=(col, keyFn)=>{
+    let start=2;                                  // 본문 시작 행(0-based)
+    for(let i=2;i<=raw.length+1;i++){
+      const cur = i<raw.length+2 ? keyFn(raw[i-2]) : null;
+      const prev= keyFn(raw[start-2]);
+      const same = (i<raw.length+2) && cur===prev;
+      if(!same){
+        if(i-1>start) merges.push({s:{r:start,c:col},e:{r:i-1,c:col}});
+        start=i;
+      }
+    }
+  };
+  mergeCol(0, r=>r.강사);                        // 강사 병합
+  mergeCol(1, r=>r.강사+'|'+r.과목);              // 같은 강사 안에서 과목 병합
+  ws['!merges']=merges;
+  ws['!cols']=[{wch:14},{wch:12},{wch:14},{wch:12}];
+
+  // 과외비 숫자 서식 (천 단위)
+  for(let i=2;i<raw.length+2;i++){
+    const cell=ws[XLSX.utils.encode_cell({r:i,c:3})];
+    if(cell) cell.z='#,##0';
+  }
+
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '과외명단');
+  const d=new Date();
+  const fn=`과외명단_${semName||''}_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}.xlsx`;
+  XLSX.writeFile(wb, fn);
+}
 function exportExcel(kind){
   if(typeof XLSX==='undefined'){alert('엑셀 기능을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.');return;}
   let rows=[], fname='';
@@ -3207,6 +3280,8 @@ function exportExcel(kind){
       '회차별 상세':(c.sessions||[]).map(s=>`${WD[s.weekday]} ${hhmm(s.start_time)}~${hhmm(s.end_time)} ${s.room_id?name('rooms',s.room_id):'장소미정'}`).join(' / '),
       정원:c.capacity??'', 수강료:c.tuition||''
     }));
+  } else if(kind==='tutoring'){
+    exportTutoringExcel(); return;
   } else if(kind==='students'){
     fname='학생목록';
     rows=DB.students.map(s=>({
