@@ -191,12 +191,23 @@ function goToday(){curDate=new Date();renderDateBar();loadDay();}
 
 async function loadAll(){
   if(!LIVE){document.getElementById('gridWrap').innerHTML='<div class="empty">데이터베이스에 연결할 수 없습니다.</div>';return;}
+  const fetchAll=async(t,order)=>{
+    const size=1000; let from=0,out=[];
+    for(let i=0;i<50;i++){
+      let q=sb.from(t).select('*');
+      if(order) q=q.order('sort_order').order('id');
+      const{data,error}=await q.range(from,from+size-1);
+      if(error||!data||!data.length) break;
+      out=out.concat(data);
+      if(data.length<size) break;
+      from+=size;
+    }
+    return out;
+  };
   const [rm,co,cs]=await Promise.all([
-    sb.from('rooms').select('*').order('sort_order').order('id'),
-    sb.from('courses').select('*'),
-    sb.from('course_sessions').select('*'),
+    fetchAll('rooms',true), fetchAll('courses'), fetchAll('course_sessions'),
   ]);
-  DB.rooms=rm.data||[]; DB.courses=co.data||[]; DB.sessions=cs.data||[];
+  DB.rooms=rm||[]; DB.courses=co||[]; DB.sessions=cs||[];
   // 강사 연결
   try{ const ci=await sb.from('course_instructors').select('*'); DB.courseInst=ci.data||[]; }catch(e){DB.courseInst=[];}
   try{ const ins=await sb.from('instructors').select('*'); DB.instructors=ins.data||[]; }catch(e){DB.instructors=[];}
