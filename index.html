@@ -397,7 +397,7 @@ function teacherCourseStudents(cid){
       <td class="muted">${gradeTxt(st.grade)}</td>
       <td class="muted">${st.school||'-'}</td>
       <td class="muted" style="font-size:12px;">${st.parent_phone||st.student_phone||'-'}</td>
-      <td style="text-align:center;"><span class="tag" style="background:${paid?'var(--brand-soft)':'var(--warn-bg)'};color:${paid?'var(--brand)':'var(--warn-ink)'};">${paid?'완납':'미납'}</span></td>
+      ${canEdit()?`<td style="text-align:center;"><span class="tag" style="background:${paid?'var(--brand-soft)':'var(--warn-bg)'};color:${paid?'var(--brand)':'var(--warn-ink)'};">${paid?'완납':'미납'}</span></td>`:''}
       ${(canEdit()||isTeacher())?`<td style="text-align:center;">
         ${c.is_tutoring===true
           ? `<button class="btn sm" style="white-space:nowrap;" onclick="assignToCourse(${cid})" title="일반 강좌로 배정">강좌 배정</button>`
@@ -418,7 +418,7 @@ function teacherCourseStudents(cid){
     </div>
     <h3 style="font-size:13px;margin:0 0 8px;">👥 신청 학생 (${enrolled.length}명)</h3>
     <div class="card" style="padding:0;max-height:46vh;overflow:auto;">
-      <table><thead><tr><th></th><th>이름</th><th>학년</th><th>학교</th><th>연락처</th><th style="text-align:center;">납부</th>${(canEdit()||isTeacher())?'<th></th>':''}</tr></thead>
+      <table><thead><tr><th></th><th>이름</th><th>학년</th><th>학교</th><th>연락처</th>${canEdit()?'<th style="text-align:center;">납부</th>':''}${(canEdit()||isTeacher())?'<th></th>':''}</tr></thead>
       <tbody>${list}</tbody></table>
     </div>
     ${waitList}
@@ -909,7 +909,7 @@ function courseDetail(id){
         <div style="font-weight:600;font-size:13.5px;">${st.name||'-'} <span class="muted" style="font-weight:400;font-size:12px;">${st.grade!=null?gradeText(st.grade):''} ${st.school?'· '+st.school:''}</span></div>
         <div class="muted" style="font-size:11.5px;">${st.parent_phone?'학부모 '+st.parent_phone:''}${st.student_phone?' · 본인 '+st.student_phone:''}</div>
       </div>
-      <span style="font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;background:${paid?'#e6f2ec':'#fbe9e9'};color:${paid?'#1f6b54':'#a32d2d'};white-space:nowrap;">${paid?'완납':'미납'}</span>
+      ${canEdit()?`<span style="font-size:11px;font-weight:600;padding:3px 9px;border-radius:20px;background:${paid?'#e6f2ec':'#fbe9e9'};color:${paid?'#1f6b54':'#a32d2d'};white-space:nowrap;">${paid?'완납':'미납'}</span>`:''}
       <button class="btn sm ghost" onclick="studentTimetable(${st.id})" style="white-space:nowrap;">시간표</button>
     </div>`;
   };
@@ -950,7 +950,7 @@ function courseDetail(id){
     <div style="background:var(--paper);border-radius:10px;padding:13px 15px;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
         <div style="font-weight:600;font-size:12.5px;color:var(--ink-soft);">👥 신청 학생 ${enrolled.length}명</div>
-        <div class="muted" style="font-size:11.5px;">수강료 합계 ${total.toLocaleString()}원${unpaidCnt?` · 미납 ${unpaidCnt}명`:''}</div>
+        ${canEdit()?`<div class="muted" style="font-size:11.5px;">수강료 합계 ${total.toLocaleString()}원${unpaidCnt?` · 미납 ${unpaidCnt}명`:''}</div>`:''}
       </div>
       ${enrolledHtml}
       ${waitHtml}
@@ -1269,8 +1269,8 @@ function renderCourses(){
       <td class="muted">${instNames(c)||'-'}</td>
       <td class="muted" style="font-size:12px;">${when}</td>
       <td class="muted">${room}</td>
-      <td style="text-align:right;font-variant-numeric:tabular-nums;">${c.tuition?c.tuition.toLocaleString()+'원':'-'}</td>
-      <td style="text-align:center;"><span class="tag" style="background:${paid?'var(--brand-soft)':'var(--warn-bg)'};color:${paid?'var(--brand)':'var(--warn-ink)'};">${paid?'완납':'미납'}</span></td>
+      ${canEdit()?`<td style="text-align:right;font-variant-numeric:tabular-nums;">${c.tuition?c.tuition.toLocaleString()+'원':'-'}</td>
+      <td style="text-align:center;"><span class="tag" style="background:${paid?'var(--brand-soft)':'var(--warn-bg)'};color:${paid?'var(--brand)':'var(--warn-ink)'};">${paid?'완납':'미납'}</span></td>`:''}
       ${canAdd?`<td onclick="event.stopPropagation()"><div class="row-actions">
         <button class="btn sm" onclick="tutorForm(${c.id})">수정</button>
         <button class="btn sm" onclick="assignToCourse(${c.id})" title="이 학생을 일반 강좌로 배정">강좌 배정</button>
@@ -1283,8 +1283,8 @@ function renderCourses(){
     </tr></thead><tbody>${rows||`<tr><td colspan="${canEdit()?8:7}" class="empty">${selSemObj?selSemObj.name+'에 강좌가 없습니다.':'강좌가 없습니다.'}</td></tr>`}</tbody></table></div>`;
 
   const tutorTable=`<div class="card" style="overflow-x:auto;"><table><thead><tr>
-      <th>학생</th><th>학년</th><th>연락처</th><th>과목</th><th>강사</th><th>요일·시간</th><th>장소</th><th style="text-align:right;">수업료</th><th style="text-align:center;">납부</th>${canAdd?'<th></th>':''}
-    </tr></thead><tbody>${tutorRows||`<tr><td colspan="${canAdd?10:9}" class="empty">등록된 과외가 없습니다.</td></tr>`}</tbody></table></div>
+      <th>학생</th><th>학년</th><th>연락처</th><th>과목</th><th>강사</th><th>요일·시간</th><th>장소</th>${canEdit()?'<th style="text-align:right;">수업료</th><th style="text-align:center;">납부</th>':''}${canAdd?'<th></th>':''}
+    </tr></thead><tbody>${tutorRows||`<tr><td colspan="${(canEdit()?8:6)+(canAdd?1:0)}" class="empty">등록된 과외가 없습니다.</td></tr>`}</tbody></table></div>
     <p class="muted" style="font-size:12px;margin-top:10px;">과외는 <b>수강신청 페이지에서 가입한 학생</b>을 검색해 등록합니다. 주간 시간표·공간 예약에도 함께 표시됩니다. <b>강좌 배정</b>을 누르면 일반 강좌로 옮길 수 있습니다.${isTeacher()?' 강사 계정으로 등록하면 담당 강사가 본인으로 지정됩니다.':''}</p>`;
 
   main.innerHTML=head(tutorMode?'과외 관리':'강좌 관리',
@@ -1438,10 +1438,10 @@ function tutorSearchStudent(q){
   document.getElementById('tf_sid').value='';
   if(info) info.style.display='none';
   if(!q){ box.innerHTML=''; return; }
-  // 과외 전용 학생은 제외하고, 가입한 학생만 검색
-  const hits=(DB.students||[]).filter(s=>!isTutorStudent(s) && (s.name||'').includes(q)).slice(0,8);
+  // 가입한 학생 전체에서 검색 (이미 과외를 받는 학생도 추가 등록 가능)
+  const hits=(DB.students||[]).filter(s=>(s.name||'').includes(q)).slice(0,8);
   if(!hits.length){
-    box.innerHTML='<div class="muted" style="font-size:12px;padding:6px 2px;">일치하는 가입 학생이 없습니다. (학생이 먼저 수강신청 페이지에서 가입해야 합니다)</div>';
+    box.innerHTML='<div class="muted" style="font-size:12px;padding:6px 2px;">일치하는 학생이 없습니다. (학생이 먼저 수강신청 페이지에서 가입해야 합니다)</div>';
     return;
   }
   box.innerHTML=hits.map(s=>`
@@ -1449,6 +1449,8 @@ function tutorSearchStudent(q){
       onmouseover="this.style.background='var(--brand-soft)'" onmouseout="this.style.background=''">
       <b>${s.name}</b> <span class="muted">${s.grade!=null?gradeText(s.grade):''}${s.school?' · '+s.school:''}</span>
       <span class="muted" style="font-size:11.5px;"> · ${s.parent_phone||s.student_phone||'연락처 없음'}</span>
+      ${(()=>{const n=(DB.enrollments||[]).filter(e=>e.student_id===s.id&&e.status==='ENROLLED'&&(DB.courses.find(c=>c.id===e.course_id)||{}).is_tutoring===true).length;
+        return n?` <span class="tag" style="background:#ede9fe;color:#5b21b6;font-size:10px;">과외 ${n}건</span>`:'';})()}
     </div>`).join('');
 }
 function tutorPickStudent(id){
@@ -1514,7 +1516,9 @@ async function saveTutor(cid, semId, stuId, enrId){
     }
 
     // 3) 강좌(과외) 저장
-    const payload={title:`${nm} 과외`, subject_id:subjId, target_id:target.id,
+    // 같은 학생이 여러 과외를 받을 수 있으므로 과목을 제목에 포함해 구분
+    const subjName=name('subjects',subjId)||'';
+    const payload={title:`${nm} 과외${subjName?'('+subjName+')':''}`, subject_id:subjId, target_id:target.id,
       tuition:fee, semester_id, sessions_per_week:sessions.length, is_tutoring:true};
     let courseId=cid;
     if(cid){
