@@ -3086,13 +3086,26 @@ async function del(table,id){
 }
 
 // ════════ Supabase 데이터 로드 ════════
+// Supabase는 한 번에 1000건까지만 주므로 나눠서 전부 가져옴
+async function fetchAll(table){
+  const size=1000; let from=0; let out=[];
+  for(let i=0;i<50;i++){
+    const{data,error}=await sb.from(table).select('*').range(from,from+size-1);
+    if(error){ console.warn('로드 오류:',table,error); break; }
+    if(!data||!data.length) break;
+    out=out.concat(data);
+    if(data.length<size) break;
+    from+=size;
+  }
+  return out;
+}
 async function loadAll(){
   if(!LIVE)return;
   const t=['semesters','subjects','instructors','rooms','target_groups','courses','enrollments','schools','school_events','notices','app_settings'];
   for(const tb of t){
     try{
-      const{data,error}=await sb.from(tb).select('*');
-      if(!error&&data)DB[tb]=data;
+      const rows=await fetchAll(tb);
+      if(rows.length)DB[tb]=rows;
     }catch(err){ console.warn('테이블 로드 건너뜀:',tb,err); }
   }
   // 학생: RLS로 직접 읽기가 막혀 있으므로 관리자용 RPC로 조회 (연락처 포함)
@@ -3106,8 +3119,8 @@ async function loadAll(){
   }catch(err){ console.warn('학생 로드 건너뜀:',err); }
   // 강좌의 세션·강사 연결 로드 (강사는 여러 명 가능)
   try{
-    const cs=await sb.from('course_sessions').select('*');
-    const ci=await sb.from('course_instructors').select('*');
+    const cs={data:await fetchAll('course_sessions')};
+    const ci={data:await fetchAll('course_instructors')};
     if(cs.data&&ci.data){
       DB.courses.forEach(c=>{
         c.sessions=cs.data.filter(s=>s.course_id===c.id);
