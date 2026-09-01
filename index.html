@@ -336,7 +336,8 @@ let stuSort={key:'name',dir:'asc'};
 let stuKind='all'; // all | normal | tutor // 학생 목록 정렬 (name/grade, asc/desc)
 let enrQuery='';
 let courseSemId=null;
-let courseMode='normal'; // 'normal'=일반 강좌, 'tutor'=과외 // 강좌 관리에서 선택된 학기 (null=활성학기)
+let courseMode='normal';
+let courseInstFilter=null; // 강좌 관리 강사 필터 (null=전체) // 'normal'=일반 강좌, 'tutor'=과외 // 강좌 관리에서 선택된 학기 (null=활성학기)
 
 const TAB_TITLES={search:'통합검색',timetable:'주간 시간표',courses:'강좌 관리',students:'학생·수강신청',master:'기초자료',calendar:'학사 캘린더',accounts:'계정관리'};
 function setView(v){view=v;
@@ -1192,7 +1193,8 @@ function renderCourses(){
   // 강사 계정은 본인이 담당한 강좌만 표시
   const myInstId=isTeacher()?currentAdmin.instructor_id:null;
   const mineOnly=c=>myInstId==null||hasInst(c,myInstId);
-  const semCourses=DB.courses.filter(c=>c.semester_id===selSem && (courseMode==='tutor'?isTutor(c):!isTutor(c)) && mineOnly(c)).slice().sort((a,b)=>{
+  const instPick=c=>courseInstFilter==null||hasInst(c,courseInstFilter);
+  const semCourses=DB.courses.filter(c=>c.semester_id===selSem && (courseMode==='tutor'?isTutor(c):!isTutor(c)) && mineOnly(c) && instPick(c)).slice().sort((a,b)=>{
     // 1순위: 과목명 ㄱㄴ순 (과목명이 같으면 확실히 인접)
     const subA=DB.subjects.find(s=>s.id===a.subject_id), subB=DB.subjects.find(s=>s.id===b.subject_id);
     const sa=(subA&&subA.name)||'힣', sb2=(subB&&subB.name)||'힣'; // 과목 없으면 맨 뒤로
@@ -1240,6 +1242,23 @@ function renderCourses(){
   }).join('');
 
   const tutorMode=courseMode==='tutor';
+  // ── 강사별 필터 칩 (해당 학기·구분에 강좌가 있는 강사만) ──
+  const scopeForChips=DB.courses.filter(c=>c.semester_id===selSem
+    && (courseMode==='tutor'?isTutor(c):!isTutor(c)) && mineOnly(c));
+  const instIdsInScope=[...new Set([].concat(...scopeForChips.map(c=>
+    (c.instructor_ids&&c.instructor_ids.length)?c.instructor_ids:(c.instructor_id?[c.instructor_id]:[]))))];
+  const instList=DB.instructors.filter(i=>instIdsInScope.includes(i.id))
+    .sort((a,b)=>(a.name||'').localeCompare(b.name||'','ko'));
+  const instChips = (!isTeacher() && instList.length>1)
+    ? `<div style="margin-bottom:16px;display:flex;align-items:center;gap:8px;">
+        <label class="muted" style="font-size:12.5px;white-space:nowrap;">강사</label>
+        <select onchange="courseInstFilter=this.value?+this.value:null;renderCourses()"
+          style="padding:7px 11px;border:1px solid var(--line);border-radius:8px;font-size:13px;min-width:150px;background:var(--card);">
+          <option value="" ${courseInstFilter==null?'selected':''}>전체 강사</option>
+          ${instList.map(i=>`<option value="${i.id}" ${courseInstFilter===i.id?'selected':''}>${i.name}</option>`).join('')}
+        </select>
+       </div>`
+    : '';
   const canAdd=canEdit()||isTeacher();   // 과외는 강사도 등록 가능
   const addBtn = tutorMode
     ? (canAdd?`<button class="btn primary" onclick="tutorForm(null,${selSem||'null'})">+ 과외 등록</button>`:'')
@@ -1249,8 +1268,8 @@ function renderCourses(){
 
   // 일반/과외 전환 버튼
   const modeBtns=`<div class="ttmode" style="margin-bottom:14px;">
-    <button class="ttmodebtn ${!tutorMode?'on':''}" onclick="window._tutorModeTouched=1;courseMode='normal';renderCourses()">📚 일반 강좌</button>
-    <button class="ttmodebtn ${tutorMode?'on':''}" onclick="window._tutorModeTouched=1;courseMode='tutor';renderCourses()">🧑‍🏫 과외</button>
+    <button class="ttmodebtn ${!tutorMode?'on':''}" onclick="window._tutorModeTouched=1;courseMode='normal';courseInstFilter=null;renderCourses()">📚 일반 강좌</button>
+    <button class="ttmodebtn ${tutorMode?'on':''}" onclick="window._tutorModeTouched=1;courseMode='tutor';courseInstFilter=null;renderCourses()">🧑‍🏫 과외</button>
   </div>`;
 
   // 과외 전용 표 (학생 기준)
@@ -1293,7 +1312,8 @@ function renderCourses(){
         ? `<button class="btn sm" onclick="exportExcel('tutoring')" style="margin-right:6px;">엑셀 저장</button>`
         : `<button class="btn sm" onclick="exportExcel('courses')" style="margin-right:6px;">엑셀 저장</button>`}${addBtn}`)+connBanner()+`
     ${modeBtns}
-    ${sems.length?`<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">${chips}</div>`:'<p class="muted" style="margin-bottom:12px;">등록된 학기가 없습니다. 기초자료 → 학기에서 먼저 추가하세요.</p>'}
+    ${sems.length?`<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">${chips}</div>`:'<p class="muted" style="margin-bottom:12px;">등록된 학기가 없습니다. 기초자료 → 학기에서 먼저 추가하세요.</p>'}
+    ${instChips}
     ${tutorMode?tutorTable:normalTable}
     ${(!canEdit()&&!tutorMode)?'<p class="muted" style="font-size:12px;margin-top:10px;">강좌 등록·수정·삭제는 관리자만 할 수 있습니다.</p>':''}`;
 }
