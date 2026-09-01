@@ -191,16 +191,29 @@ async function hashPw(pw){
   return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
 }
 
+// Supabase는 한 번에 1000건까지만 주므로, 나눠서 전부 가져옴
+async function fetchAll(table){
+  const size=1000; let from=0; let out=[];
+  for(let i=0;i<50;i++){                       // 안전 상한 (최대 5만건)
+    const{data,error}=await sb.from(table).select('*').range(from,from+size-1);
+    if(error){ console.warn('로드 오류:',table,error); break; }
+    if(!data||!data.length) break;
+    out=out.concat(data);
+    if(data.length<size) break;                // 마지막 페이지
+    from+=size;
+  }
+  return out;
+}
 async function loadAll(){
   if(!LIVE)return;
   for(const tb of ['subjects','instructors','rooms','target_groups','courses','enrollments','semesters']){
-    const{data,error}=await sb.from(tb).select('*'); if(!error&&data)DB[tb]=data;
+    const rows=await fetchAll(tb); if(rows.length)DB[tb]=rows;
   }
   // 공지·설정 (없어도 무시)
   try{const n=await sb.from('notices').select('*');if(n.data)DB.notices=n.data;}catch(e){}
   try{const a=await sb.from('app_settings').select('*');if(a.data)DB.app_settings=a.data;}catch(e){}
-  const cs=await sb.from('course_sessions').select('*');
-  const ci=await sb.from('course_instructors').select('*');
+  const cs={data:await fetchAll('course_sessions')};
+  const ci={data:await fetchAll('course_instructors')};
   if(cs.data&&ci.data){
     DB.courses.forEach(c=>{
       c.sessions=cs.data.filter(s=>s.course_id===c.id);
