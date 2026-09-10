@@ -1498,6 +1498,7 @@ function tutorAddSession(){
   box.appendChild(div);
 }
 async function saveTutor(cid, semId, stuId, enrId){
+  if(!(canEdit()||isTeacher())){alert('읽기 전용 계정은 등록·수정할 수 없습니다.');return;}
   const sid=+(document.getElementById('tf_sid').value||0);
   if(!sid){alert('학생을 검색해서 선택해 주세요.\n(수강신청 페이지에서 가입한 학생만 등록할 수 있습니다)');return;}
   const stuObj=(DB.students||[]).find(x=>x.id===sid)||{};
@@ -2162,7 +2163,10 @@ function studentDetail(id){
         <div><span class="muted" style="font-size:11px;">신청 강좌</span><br><b>${enr.length}개</b></div>
       </div>
     </div>
-    <div style="font-weight:600;font-size:13px;margin-bottom:4px;">📚 신청 강좌</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+      <span style="font-weight:600;font-size:13px;">📚 신청 강좌</span>
+      ${canEdit()?`<button class="btn sm primary" onclick="addCourseToStudent(${s.id})">+ 강좌 추가</button>`:''}
+    </div>
     <div>${list}</div>
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:12px;border-top:2px solid var(--line);">
       <span style="font-weight:600;">수강료 합계</span>
@@ -2179,6 +2183,68 @@ function studentDetail(id){
       ${bulkPayBtn}
     </div>`;
   document.getElementById('overlay').classList.add('show');
+}
+// 관리자가 학생에게 강좌를 직접 배정 (접수 마감과 무관)
+function addCourseToStudent(studentId){
+  if(!canEdit()){alert('관리자만 배정할 수 있습니다.');return;}
+  const st=(DB.students||[]).find(x=>x.id===studentId); if(!st)return;
+  const sems=DB.semesters||[];
+  const actSem=sems.find(x=>x.is_active)||sems[0];
+  const semId=actSem?actSem.id:null;
+
+  // 이미 신청한 강좌는 제외
+  const already=new Set((DB.enrollments||[])
+    .filter(e=>e.student_id===studentId&&e.status==='ENROLLED').map(e=>e.course_id));
+  const cands=DB.courses.filter(c=>c.semester_id===semId && !already.has(c.id) && c.is_tutoring!==true)
+    .sort((a,b)=>(name('subjects',a.subject_id)||'').localeCompare(name('subjects',b.subject_id)||'','ko')
+      || (a.title||'').localeCompare(b.title||'','ko'));
+
+  if(!cands.length){alert('배정할 수 있는 강좌가 없습니다.\n(이미 모두 신청했거나 이번 학기 강좌가 없습니다)');return;}
+
+  const opts=cands.map(c=>{
+    const when=(c.sessions||[]).map(x=>`${WD[x.weekday]} ${hhmm(x.start_time)}~${hhmm(x.end_time)}`).join(', ');
+    const cnt=(DB.enrollments||[]).filter(e=>e.course_id===c.id&&e.status==='ENROLLED').length;
+    const full=c.capacity&&cnt>=c.capacity;
+    return `<option value="${c.id}">${name('subjects',c.subject_id)} · ${c.title}${when?' ('+when+')':''} · ${cnt}명${full?' [정원초과]':''}</option>`;
+  }).join('');
+
+  closeModal();
+  openModal('강좌 배정',`
+    <div style="background:var(--brand-soft);border-radius:8px;padding:11px 13px;margin-bottom:14px;font-size:13px;">
+      <b>${st.name}</b> <span class="muted">${st.grade!=null?gradeText(st.grade):''}${st.school?' · '+st.school:''}</span><br>
+      <span class="muted" style="font-size:12px;">${actSem?actSem.name:''} · 현재 ${already.size}개 수강 중</span>
+    </div>
+    <div class="field"><label>배정할 강좌</label><select id="asg_course">${opts}</select></div>
+    <div class="field"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+      <input type="checkbox" id="asg_confirm" checked style="width:auto;"> 바로 확정 처리
+    </label>
+    <p class="muted" style="font-size:11.5px;margin:4px 0 0;">접수 마감 여부와 관계없이 관리자가 직접 배정합니다. 납부는 '미납'으로 등록됩니다.</p></div>
+    `, ()=>runAddCourseToStudent(studentId));
+}
+async function runAddCourseToStudent(studentId){
+  const courseId=+document.getElementById('asg_course').value;
+  const confirmed=document.getElementById('asg_confirm').checked;
+  if(!courseId){alert('강좌를 선택해 주세요.');return;}
+  const c=DB.courses.find(x=>x.id===courseId);
+  const cnt=(DB.enrollments||[]).filter(e=>e.course_id===courseId&&e.status==='ENROLLED').length;
+  if(c&&c.capacity&&cnt>=c.capacity){
+    if(!confirm(`'${c.title}'는 정원(${c.capacity}명)이 찼습니다.\n그래도 배정할까요?`))return;
+  }
+  try{
+    if(LIVE){
+      const r=await sb.from('enrollments').insert({student_id:studentId, course_id:courseId,
+        status:'ENROLLED', confirmed:confirmed, payment_status:'UNPAID'});
+      if(r.error){alert('배정 오류: '+r.error.message);return;}
+      await loadAll();
+    } else {
+      const nid=Math.max(0,...(DB.enrollments||[]).map(e=>e.id||0))+1;
+      (DB.enrollments=DB.enrollments||[]).push({id:nid,student_id:studentId,course_id:courseId,
+        status:'ENROLLED',confirmed:confirmed,payment_status:'UNPAID'});
+    }
+    closeModal(); render();
+    setTimeout(()=>studentDetail(studentId),80);
+    alert('✅ 강좌가 배정되었습니다.');
+  }catch(err){ alert('배정 중 오류: '+(err&&err.message?err.message:err)); }
 }
 // 관리자 직권 수강 취소
 async function adminCancelEnroll(enrId, studentId){
