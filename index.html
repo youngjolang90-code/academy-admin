@@ -1366,7 +1366,10 @@ function tutorForm(cid, semId){
     </div>
     <div class="field"><label>과목</label><select id="tf_subj">${DB.subjects.map(x=>`<option value="${x.id}" ${c&&c.subject_id===x.id?'selected':''}>${x.name}</option>`).join('')}</select></div>
     ${instBlock}
-    <div class="field"><label>수업료(원)</label><input id="tf_fee" type="number" value="${c&&c.tuition?c.tuition:''}" placeholder="예: 300000"></div>
+    <div class="field"><label>수업료(원)</label>
+      <input id="tf_fee" type="text" inputmode="numeric" value="${c&&c.tuition?c.tuition.toLocaleString():''}" placeholder="예: 300,000"
+        oninput="this.value=this.value.replace(/[^0-9,]/g,'')">
+      <p class="muted" style="font-size:11.5px;margin:4px 0 0;">숫자만 입력하세요. 쉼표는 자동 처리됩니다.</p></div>
     <div class="field"><label>수업 일정 <span class="muted" style="font-weight:400;font-size:11.5px;">· 정해지지 않았다면 비워두고 저장해도 됩니다</span></label>
       <div id="tf_sessions">${sesRows}</div>
       <button class="btn sm" onclick="tutorAddSession()">+ 수업 추가</button>
@@ -1505,7 +1508,8 @@ async function saveTutor(cid, semId, stuId, enrId){
   const nm=stuObj.name||'';
   const grade=stuObj.grade!=null?stuObj.grade:0;
   const subjId=+document.getElementById('tf_subj').value;
-  const fee=parseInt((document.getElementById('tf_fee').value||'').replace(/[^0-9]/g,''))||null;
+  const feeRaw=String((document.getElementById('tf_fee')||{}).value||'');
+  const fee=feeRaw.replace(/[^0-9]/g,'')? parseInt(feeRaw.replace(/[^0-9]/g,'')) : null;
   const instId = isTeacher() ? currentAdmin.instructor_id
                              : +(document.getElementById('tf_inst')||{}).value;
   if(!instId){alert('담당 강사를 선택해 주세요.');return;}
@@ -1702,7 +1706,9 @@ function courseForm(id,semId){
       <button type="button" class="btn sm" id="addInst" style="margin-top:4px;">+ 강사 추가</button>
       <div class="muted" style="font-size:11px;margin-top:4px;">※ 두 명 이상이면 각 강사 계정에서 모두 이 강좌가 보입니다.</div>
     </div>
-    <div class="field"><label>수강료(원)</label><input id="f_tuition" type="number" value="${c.tuition||''}" placeholder="예: 80000"></div>
+    <div class="field"><label>수강료(원)</label>
+      <input id="f_tuition" type="text" inputmode="numeric" value="${c.tuition?c.tuition.toLocaleString():''}" placeholder="예: 80,000"
+        oninput="this.value=this.value.replace(/[^0-9,]/g,'')"></div>
     <div class="field"><label>정원(명) · 비우면 제한 없음</label><input id="f_capacity" type="number" value="${c.capacity||''}" placeholder="예: 10"></div>
     <div class="field"><label>커리큘럼 이미지 · 선택 <span style="color:#889;font-weight:400;font-size:12px;">(여러 장 가능)</span></label>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
@@ -1756,7 +1762,7 @@ function courseForm(id,semId){
         title:val('f_title'), subject_id, target_id,
         instructor_ids,                       // 여러 명
         instructor_id:instructor_ids[0]||null, // 대표(호환)
-        tuition:val('f_tuition')?+val('f_tuition'):null,
+        tuition:(String(val('f_tuition')||'').replace(/[^0-9]/g,'')?parseInt(String(val('f_tuition')).replace(/[^0-9]/g,'')):null),
         capacity:val('f_capacity')?+val('f_capacity'):null,
         curriculum_url:val('f_curri_url')||null,
         curriculum_text:(document.getElementById('f_curri_text')||{}).value||null,
